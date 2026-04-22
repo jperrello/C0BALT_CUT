@@ -5,9 +5,12 @@ import argparse
 import json
 import math
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import wave
 from pathlib import Path
 
@@ -365,6 +368,35 @@ def transcribe(src, cs, ce, tmp):
     return r.get("segments", [])
 
 
+DELIVER_DIR = Path.home() / "Movies" / "gastown" / "shorts"
+
+
+def bead_id():
+    v = os.environ.get("BEADS_CURRENT")
+    if v:
+        return v.strip()
+    try:
+        r = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                           capture_output=True, text=True, check=True)
+        m = re.search(r"(sh-[a-z0-9]+)", r.stdout)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def deliver(out):
+    DELIVER_DIR.mkdir(parents=True, exist_ok=True)
+    bid = bead_id()
+    ts = time.strftime("%Y%m%dT%H%M%S")
+    name = f"{bid}-{ts}-{out.stem}.mp4" if bid else f"{ts}-{out.stem}.mp4"
+    dst = DELIVER_DIR / name
+    shutil.copy2(out, dst)
+    print(f"[v2] delivered → {dst}")
+    return dst
+
+
 def render_one(src, cs, ce, out, reframe_mode="l1"):
     out.parent.mkdir(parents=True, exist_ok=True)
     src_w, src_h = probe_size(src)
@@ -532,6 +564,7 @@ def main():
         out = args.outdir / "smoke.mp4"
         render_one(src, args.clip_start, args.clip_end, out, args.reframe_mode)
         print(f"[v2] wrote {out}")
+        deliver(out)
         return
 
     print("[v2] computing audio RMS")
@@ -550,6 +583,7 @@ def main():
     for i, c in enumerate(final, 1):
         out = shorts_dir / f"short-{i:02d}.mp4"
         render_one(src, c["clip_start"], c["clip_end"], out, args.reframe_mode)
+        deliver(out)
         meta.append({"index": i, "file": str(out.relative_to(ROOT)),
                      "source_start": c["clip_start"],
                      "source_end": c["clip_end"],
