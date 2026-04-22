@@ -8,3 +8,5 @@ CLAUDE.local.md
 source/stream.mp4
 output/
 input/
+models/
+*.mp4
