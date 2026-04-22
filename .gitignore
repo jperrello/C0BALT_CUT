@@ -5,3 +5,6 @@ __pycache__/
 state.json
 CLAUDE.md
 CLAUDE.local.md
+source/stream.mp4
+output/
+input/
