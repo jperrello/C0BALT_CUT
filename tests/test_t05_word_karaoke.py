@@ -31,22 +31,21 @@ def test_subs_mode_flag_exists_in_help():
         "--subs-mode must offer choices line and word"
 
 
-def test_subs_mode_default_is_line():
-    """Default behavior must be unchanged: line mode."""
+def test_subs_mode_default_is_selective():
+    """Default flipped to selective in T-06; line mode still available explicitly."""
     import argparse
-    # Reuse v2.main parser construction by invoking with minimal args
     r = subprocess.run(
         ["python3", "-c",
          "import sys; sys.path.insert(0, %r); "
          "from pipeline_v2 import main; "
          "import argparse, inspect; "
          "src = inspect.getsource(main); "
-         "print('SUBS_DEFAULT_LINE' if 'default=\"line\"' in src or "
-         "\"default='line'\" in src else 'NO')" % str(ROOT)],
+         "print('SUBS_DEFAULT_SELECTIVE' if 'default=\"selective\"' in src or "
+         "\"default='selective'\" in src else 'NO')" % str(ROOT)],
         capture_output=True, text=True,
     )
-    assert "SUBS_DEFAULT_LINE" in r.stdout, \
-        "--subs-mode must default to 'line' (string literal in main())"
+    assert "SUBS_DEFAULT_SELECTIVE" in r.stdout, \
+        "--subs-mode must default to 'selective' (T-06 flip)"
 
 
 # ---------- (b) word-mode ASS writer ----------

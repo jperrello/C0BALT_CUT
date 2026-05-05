@@ -413,6 +413,105 @@ def align_words(segs, audio_path):
     return out
 
 
+def tag_candidate_spans(segs, rms, scene_cuts, cs, ce):
+    out = []
+    arr = np.asarray(rms, dtype=np.float32) if rms is not None else np.array([], dtype=np.float32)
+    a, b = int(max(0, cs)), int(min(ce, len(arr)))
+    if b - a >= 2:
+        win = arr[a:b]
+        z = (win - win.mean()) / (win.std() + 1e-9)
+        for i, zi in enumerate(z):
+            if float(zi) > 1.5:
+                t = a + i
+                out.append({"start": float(max(cs, t - 0.5)),
+                            "end": float(min(ce, t + 0.5)),
+                            "reason": "rms_peak"})
+    for s in segs or []:
+        toks = [w.strip(".,!?\"'").lower() for w in str(s.get("text", "")).split()]
+        if any(t in HOOK_WORDS for t in toks):
+            out.append({"start": float(s["start"]),
+                        "end": float(s["end"]),
+                        "reason": "hook_word"})
+    for c in scene_cuts or []:
+        cf = float(c)
+        if cs <= cf <= ce:
+            out.append({"start": float(max(cs, cf - 1.0)),
+                        "end": float(min(ce, cf + 1.0)),
+                        "reason": "scene_cut"})
+    return out
+
+
+_judge_state = {"key": None, "idx": 0}
+
+
+def judge_span(text, features):
+    stub = os.environ.get("JUDGE_STUB")
+    if stub is not None:
+        if _judge_state["key"] != stub:
+            _judge_state["key"] = stub
+            _judge_state["idx"] = 0
+        toks = [t.strip() for t in stub.split(",") if t.strip()]
+        if not toks:
+            return False
+        i = _judge_state["idx"] % len(toks)
+        _judge_state["idx"] += 1
+        return toks[i].upper().startswith("Y")
+    try:
+        payload = json.dumps({"text": text, "features": features})
+        subprocess.run(
+            ["bash", os.path.expanduser("~/.claude/skills/crew/crew.sh"),
+             "send", "judge", payload],
+            check=True, timeout=5, capture_output=True,
+        )
+        cap = subprocess.run(
+            ["bash", os.path.expanduser("~/.claude/skills/crew/crew.sh"),
+             "capture", "judge", "60"],
+            check=True, timeout=30, capture_output=True, text=True,
+        )
+        tail = cap.stdout.strip().splitlines()[-30:]
+        for line in reversed(tail):
+            up = line.strip().upper()
+            if up.startswith("Y") or up == "YES":
+                return True
+            if up.startswith("N") or up == "NO":
+                return False
+    except Exception:
+        pass
+    return False
+
+
+def select_engaging_spans(segs, rms, scene_cuts, cs, ce):
+    cands = tag_candidate_spans(segs, rms, scene_cuts, cs, ce)
+    out = []
+    for c in cands:
+        text = " ".join(s.get("text", "") for s in (segs or [])
+                        if s.get("end", 0) >= c["start"] and s.get("start", 0) <= c["end"])
+        feats = {"reason": c.get("reason"), "duration": c["end"] - c["start"]}
+        verdict = judge_span(text, feats)
+        out.append({**c, "engaging": bool(verdict)})
+    return out
+
+
+def write_ass_selective(segs, engaging_spans, path):
+    def ts(t):
+        h = int(t // 3600)
+        m = int((t % 3600) // 60)
+        s = t % 60
+        return f"{h:d}:{m:02d}:{s:05.2f}"
+    lines = [ASS_HEADER]
+    keep = [e for e in (engaging_spans or []) if e.get("engaging")]
+    for s in segs or []:
+        t0 = max(0.0, float(s["start"]))
+        t1 = max(t0 + 0.1, float(s["end"]))
+        if not any(t0 < e["end"] and t1 > e["start"] for e in keep):
+            continue
+        text = str(s.get("text", "")).strip().replace("\n", " ")
+        if not text:
+            continue
+        lines.append(f"Dialogue: 0,{ts(t0)},{ts(t1)},Default,,0,0,0,,{text}")
+    path.write_text("\n".join(lines) + "\n")
+
+
 def transcribe(src, cs, ce, tmp):
     try:
         import mlx_whisper
@@ -622,6 +721,23 @@ def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line", overlay=No
             sidecar = out.with_suffix(".words.json")
             sidecar.parent.mkdir(parents=True, exist_ok=True)
             sidecar.write_text(json.dumps(words))
+        elif subs_mode == "selective":
+            clip_wav = tmp / "clip.wav"
+            if not clip_wav.exists():
+                run([FFMPEG, "-nostdin", "-v", "error", "-y",
+                     "-ss", f"{cs:.3f}", "-to", f"{ce:.3f}", "-i", str(src),
+                     "-vn", "-ac", "1", "-ar", "16000", str(clip_wav)])
+            clip_rms = audio_rms(clip_wav)
+            try:
+                clip_scenes = detect_scenes(work)
+                cuts = sorted({float(s) for s, _ in clip_scenes if s > 0.0})
+            except Exception:
+                cuts = []
+            spans = select_engaging_spans(segs, clip_rms, cuts, 0.0, float(ce - cs))
+            write_ass_selective(segs, spans, ass)
+            sidecar = out.parent / (out.stem + ".subtitle_spans.json")
+            sidecar.parent.mkdir(parents=True, exist_ok=True)
+            sidecar.write_text(json.dumps({"spans": spans}))
         else:
             write_ass(segs, ass)
         def _esc(p):
@@ -887,7 +1003,7 @@ def main():
     ap.add_argument("--clip-start", type=float, default=None)
     ap.add_argument("--clip-end", type=float, default=None)
     ap.add_argument("--reframe-mode", choices=["l1", "tv"], default="l1")
-    ap.add_argument("--subs-mode", choices=["line", "word"], default="line")
+    ap.add_argument("--subs-mode", choices=["line", "word", "selective"], default="selective")
     ap.add_argument("--overlay", choices=["on", "off"], default="on")
     args = ap.parse_args()
 
