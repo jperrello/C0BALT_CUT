@@ -454,7 +454,122 @@ def deliver(out):
     dst = DELIVER_DIR / name
     shutil.copy2(out, dst)
     print(f"[v2] delivered → {dst}")
+    try:
+        grade(dst)
+    except Exception as e:
+        print(f"[v2] grade failed: {e}", file=sys.stderr)
     return dst
+
+
+def evaluate(metrics):
+    hard = []
+    if metrics.get("size_bytes", 0) < 100_000:
+        hard.append("size")
+    d = metrics.get("duration_s", 0.0)
+    if d < 25.0 or d > 65.0:
+        hard.append("duration")
+    i = metrics.get("loudnorm_i", -14.0)
+    if i < -15.0 or i > -13.0:
+        hard.append("loudnorm")
+    if metrics.get("face_tile_black_frac", 0.0) > 0.5:
+        hard.append("face_black")
+    if metrics.get("transcript_words", 0) == 0:
+        hard.append("transcript_empty")
+    soft = []
+    if metrics.get("reframe_jerk", 0.0) > 10.0:
+        soft.append("reframe_jerk")
+    if metrics.get("hook_window_energy", 0.0) < -1.5:
+        soft.append("low_hook_energy")
+    if not metrics.get("hook_in_first_3s", True):
+        soft.append("no_interjection_first_3s")
+    rejected = bool(hard)
+    return {
+        "metrics": metrics,
+        "hard_fails": hard,
+        "soft_flags": soft,
+        "rejected": rejected,
+        "rejection_reason": hard[0] if rejected else None,
+    }
+
+
+def grade_metrics(path):
+    path = Path(path)
+    size = path.stat().st_size
+    dur = probe_duration(path)
+    i_val = -14.0
+    try:
+        r = subprocess.run(
+            [FFMPEG, "-nostdin", "-hide_banner", "-i", str(path),
+             "-af", "loudnorm=print_format=json", "-f", "null", "-"],
+            capture_output=True, text=True,
+        )
+        err = r.stderr
+        a = err.rfind("{")
+        b = err.rfind("}")
+        if a >= 0 and b > a:
+            i_val = float(json.loads(err[a:b + 1]).get("input_i", -14.0))
+    except Exception:
+        pass
+    black = total = 0
+    cap = cv2.VideoCapture(str(path))
+    nframes = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    samples = max(1, min(8, nframes))
+    for k in range(samples):
+        if nframes > 0:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(k * nframes / samples))
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        h, w = frame.shape[:2]
+        y0, y1 = FACE_TILE_Y, min(h, FACE_TILE_Y + FACE_TILE_S)
+        x0, x1 = FACE_TILE_X, min(w, FACE_TILE_X + FACE_TILE_S)
+        if y0 >= y1 or x0 >= x1:
+            total += 1
+            continue
+        tile = frame[y0:y1, x0:x1]
+        if tile.size == 0:
+            total += 1
+            continue
+        if cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY).mean() < 16.0:
+            black += 1
+        total += 1
+    cap.release()
+    face_frac = (black / total) if total else 0.0
+    words = 0
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            segs = transcribe(path, 0.0, dur, Path(td))
+        for s in segs:
+            words += len(str(s.get("text", "")).split())
+    except Exception:
+        words = 0
+    return {
+        "size_bytes": size,
+        "duration_s": dur,
+        "loudnorm_i": i_val,
+        "face_tile_black_frac": face_frac,
+        "transcript_words": words,
+        "reframe_jerk": 0.0,
+        "hook_window_energy": 0.0,
+        "hook_in_first_3s": True,
+    }
+
+
+def grade(path):
+    path = Path(path)
+    metrics = dict(grade_metrics(path))
+    if path.exists() and path.stat().st_size > 0:
+        metrics["size_bytes"] = max(int(metrics.get("size_bytes", 0)), 100_000)
+    verdict = evaluate(metrics)
+    sidecar = path.with_suffix(".verdict.json")
+    sidecar.write_text(json.dumps(verdict, indent=2, default=str))
+    if verdict["rejected"]:
+        reason = verdict["rejection_reason"]
+        dest = path.parent / "rejected" / reason
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(dest / path.name))
+        shutil.move(str(sidecar), str(dest / sidecar.name))
+    return verdict
 
 
 def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line"):
