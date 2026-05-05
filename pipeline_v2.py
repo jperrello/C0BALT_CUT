@@ -353,6 +353,66 @@ def write_ass(segs, path):
     path.write_text("\n".join(lines) + "\n")
 
 
+def write_ass_word(words, path):
+    def ts(t):
+        h = int(t // 3600)
+        m = int((t % 3600) // 60)
+        s = t % 60
+        return f"{h:d}:{m:02d}:{s:05.2f}"
+    lines = [ASS_HEADER]
+    if not words:
+        path.write_text("\n".join(lines) + "\n")
+        return
+    groups = []
+    cur = [words[0]]
+    for w in words[1:]:
+        gap = w["start"] - cur[-1]["end"]
+        if gap > 0.5 or len(cur) >= 6:
+            groups.append(cur)
+            cur = [w]
+        else:
+            cur.append(w)
+    groups.append(cur)
+    for g in groups:
+        t0 = max(0.0, g[0]["start"])
+        t1 = max(t0 + 0.1, g[-1]["end"])
+        parts = []
+        for w in g:
+            cs = max(1, int(round((w["end"] - w["start"]) * 100)))
+            txt = str(w["word"]).strip()
+            if not txt:
+                continue
+            parts.append(f"{{\\k{cs}}}{txt}")
+        if not parts:
+            continue
+        lines.append(f"Dialogue: 0,{ts(t0)},{ts(t1)},Default,,0,0,0,,{' '.join(parts)}")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def align_words(segs, audio_path):
+    if not segs:
+        return []
+    try:
+        import whisperx
+        import torch
+    except ImportError as e:
+        raise RuntimeError(
+            "word mode requires whisperx (pip install whisperx)"
+        ) from e
+    device = "cpu"
+    model_a, metadata = whisperx.load_align_model(language_code="en", device=device)
+    aligned = whisperx.align(segs, model_a, metadata, str(audio_path), device,
+                             return_char_alignments=False)
+    out = []
+    for seg in aligned.get("segments", []):
+        for w in seg.get("words", []):
+            if "start" not in w or "end" not in w:
+                continue
+            out.append({"start": float(w["start"]), "end": float(w["end"]),
+                        "word": w.get("word", "").strip()})
+    return out
+
+
 def transcribe(src, cs, ce, tmp):
     try:
         import mlx_whisper
@@ -397,7 +457,7 @@ def deliver(out):
     return dst
 
 
-def render_one(src, cs, ce, out, reframe_mode="l1"):
+def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line"):
     out.parent.mkdir(parents=True, exist_ok=True)
     src_w, src_h = probe_size(src)
     win_w = int(round(src_h * PANEL_AR_INV))
@@ -438,7 +498,19 @@ def render_one(src, cs, ce, out, reframe_mode="l1"):
         print("[v2] transcribing")
         segs = transcribe(src, cs, ce, tmp)
         ass = tmp / "clip.ass"
-        write_ass(segs, ass)
+        if subs_mode == "word":
+            clip_wav = tmp / "clip.wav"
+            if not clip_wav.exists():
+                run([FFMPEG, "-nostdin", "-v", "error", "-y",
+                     "-ss", f"{cs:.3f}", "-to", f"{ce:.3f}", "-i", str(src),
+                     "-vn", "-ac", "1", "-ar", "16000", str(clip_wav)])
+            words = align_words(segs, clip_wav)
+            write_ass_word(words, ass)
+            sidecar = out.with_suffix(".words.json")
+            sidecar.parent.mkdir(parents=True, exist_ok=True)
+            sidecar.write_text(json.dumps(words))
+        else:
+            write_ass(segs, ass)
         ass_esc = (str(ass)
                    .replace("\\", "\\\\").replace(":", "\\:")
                    .replace(",", "\\,").replace("'", "\\'")
@@ -598,6 +670,7 @@ def main():
     ap.add_argument("--clip-start", type=float, default=None)
     ap.add_argument("--clip-end", type=float, default=None)
     ap.add_argument("--reframe-mode", choices=["l1", "tv"], default="l1")
+    ap.add_argument("--subs-mode", choices=["line", "word"], default="line")
     args = ap.parse_args()
 
     src = args.input
@@ -612,7 +685,8 @@ def main():
 
     if args.clip_start is not None and args.clip_end is not None:
         out = args.outdir / "smoke.mp4"
-        render_one(src, args.clip_start, args.clip_end, out, args.reframe_mode)
+        render_one(src, args.clip_start, args.clip_end, out, args.reframe_mode,
+                   subs_mode=args.subs_mode)
         print(f"[v2] wrote {out}")
         deliver(out)
         return
@@ -645,7 +719,8 @@ def main():
     meta = []
     for i, c in enumerate(final, 1):
         out = shorts_dir / f"short-{i:02d}.mp4"
-        render_one(src, c["clip_start"], c["clip_end"], out, args.reframe_mode)
+        render_one(src, c["clip_start"], c["clip_end"], out, args.reframe_mode,
+                   subs_mode=args.subs_mode)
         deliver(out)
         transcript = [{"start": float(s["start"]), "end": float(s["end"]), "text": s["text"]}
                       for s in c.get("segs", [])]
