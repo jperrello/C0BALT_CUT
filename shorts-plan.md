@@ -97,7 +97,7 @@ Candidates, prioritize by what's visibly broken on the MVP output:
 
 If a local model needs to run thousands of times (e.g., reframe tracker
 on every frame of 2 hours), and it's CPU-bound, either downscale before
-running it or mint a helper polecat to parallelize. Don't block shorty's
+running it or mint a helper crew member to parallelize. Don't block shorty's
 main loop on a 40-minute model run.
 
 ## Open questions (file as beads when you pick them up)
