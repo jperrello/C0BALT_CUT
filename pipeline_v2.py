@@ -368,7 +368,7 @@ def transcribe(src, cs, ce, tmp):
     return r.get("segments", [])
 
 
-DELIVER_DIR = Path.home() / "Movies" / "gastown" / "shorts"
+DELIVER_DIR = Path("/Users/jperr/Documents/shorts/delivered")
 
 
 def bead_id():
@@ -540,6 +540,56 @@ def pick(cands, n=3, min_gap=90.0):
     return chosen
 
 
+HOOK_ALPHA = 2.0
+DURATION_TARGET = 45.0
+
+
+def hook_score(segs, rms_clip, start_abs):
+    if not segs:
+        return 0.0, False
+    head = [s for s in segs if s["start"] < 3.0]
+    words = " ".join(s["text"] for s in head).lower().split()
+    hit = any(w.strip(".,!?") in HOOK_WORDS for w in words)
+    qmark = any(s["text"].rstrip().endswith("?") for s in head)
+    early_peak = False
+    if len(rms_clip) > 3:
+        z = (rms_clip - rms_clip.mean()) / (rms_clip.std() + 1e-9)
+        early_peak = bool(z[:3].max() > 1.5)
+    score = 1.0 * hit + 0.5 * qmark + 1.0 * early_peak
+    return float(score), hit or early_peak
+
+
+def composite_score(cand):
+    return float(cand.get("score", 0.0)) + HOOK_ALPHA * float(cand.get("hook_score", 0.0))
+
+
+def score_features(segs, rms_clip, cs, ce):
+    head = [s for s in segs if s["start"] < 3.0]
+    words = " ".join(s["text"] for s in head).lower().split()
+    hook_first = any(w.strip(".,!?") in HOOK_WORDS for w in words)
+    standalone = any(s["text"].rstrip().endswith((".", "!", "?")) and s["end"] <= 3.5 for s in head)
+    dur = float(ce - cs)
+    fit = 1.0 / (1.0 + abs(dur - DURATION_TARGET) / 10.0)
+    return {
+        "hook_in_first_3s": bool(hook_first),
+        "standalone_3s": bool(standalone),
+        "duration_fit": float(fit),
+    }
+
+
+def pick_variety(cands, n, min_gap=600.0):
+    ranked = sorted(cands, key=lambda c: -composite_score(c))
+    chosen = []
+    for c in ranked:
+        if any(abs(c["start"] - p["start"]) < min_gap for p in chosen):
+            continue
+        chosen.append(c)
+        if len(chosen) >= n:
+            break
+    chosen.sort(key=lambda x: x["start"])
+    return chosen
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("input", type=Path, help="source VOD")
@@ -576,7 +626,20 @@ def main():
         cs, ce = shape_window(c, rms)
         c["clip_start"] = cs
         c["clip_end"] = ce
-    final = pick(cands, n=args.n)
+    shortlist = pick(cands, n=args.n * 3, min_gap=90.0)[: args.n * 2]
+    print(f"[v2] shortlisted {len(shortlist)} candidates, transcribing for hook_score")
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        for c in shortlist:
+            cs, ce = c["clip_start"], c["clip_end"]
+            segs = transcribe(src, cs, ce, tmp)
+            a, b = int(cs), min(int(ce), len(rms))
+            clip_rms = rms[a:b] if b > a else np.array([0.0])
+            hs, _ = hook_score(segs, clip_rms, cs)
+            c["hook_score"] = hs
+            c["segs"] = segs
+            c["features"] = score_features(segs, clip_rms, cs, ce)
+    final = pick_variety(shortlist, n=args.n, min_gap=600.0)
     shorts_dir = args.outdir / "shorts"
     shorts_dir.mkdir(parents=True, exist_ok=True)
     meta = []
@@ -584,10 +647,15 @@ def main():
         out = shorts_dir / f"short-{i:02d}.mp4"
         render_one(src, c["clip_start"], c["clip_end"], out, args.reframe_mode)
         deliver(out)
+        transcript = [{"start": float(s["start"]), "end": float(s["end"]), "text": s["text"]}
+                      for s in c.get("segs", [])]
         meta.append({"index": i, "file": str(out.relative_to(ROOT)),
                      "source_start": c["clip_start"],
                      "source_end": c["clip_end"],
-                     "score": c["score"]})
+                     "score": c["score"],
+                     "hook_score": c.get("hook_score", 0.0),
+                     "composite": composite_score(c),
+                     "transcript": transcript})
     (args.outdir / "shorts.json").write_text(json.dumps(
         {"source": str(src), "count": len(meta), "shorts": meta}, indent=2))
     print(f"[v2] wrote {len(meta)} shorts")
