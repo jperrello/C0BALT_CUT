@@ -557,9 +557,7 @@ def grade_metrics(path):
 
 def grade(path):
     path = Path(path)
-    metrics = dict(grade_metrics(path))
-    if path.exists() and path.stat().st_size > 0:
-        metrics["size_bytes"] = max(int(metrics.get("size_bytes", 0)), 100_000)
+    metrics = grade_metrics(path)
     verdict = evaluate(metrics)
     sidecar = path.with_suffix(".verdict.json")
     sidecar.write_text(json.dumps(verdict, indent=2, default=str))
@@ -572,7 +570,7 @@ def grade(path):
     return verdict
 
 
-def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line"):
+def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line", overlay=None):
     out.parent.mkdir(parents=True, exist_ok=True)
     src_w, src_h = probe_size(src)
     win_w = int(round(src_h * PANEL_AR_INV))
@@ -626,10 +624,17 @@ def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line"):
             sidecar.write_text(json.dumps(words))
         else:
             write_ass(segs, ass)
-        ass_esc = (str(ass)
-                   .replace("\\", "\\\\").replace(":", "\\:")
-                   .replace(",", "\\,").replace("'", "\\'")
-                   .replace("[", "\\[").replace("]", "\\]"))
+        def _esc(p):
+            return (str(p)
+                    .replace("\\", "\\\\").replace(":", "\\:")
+                    .replace(",", "\\,").replace("'", "\\'")
+                    .replace("[", "\\[").replace("]", "\\]"))
+        ass_esc = _esc(ass)
+        vf = f"ass={ass_esc}"
+        if overlay and overlay != "off":
+            ov = tmp / "overlay.ass"
+            write_ass_overlay(overlay, 0.0, float(ce - cs), ov)
+            vf = f"ass={ass_esc},ass={_esc(ov)}"
 
         n = min(len(cx), len(x_raw), len(smoothed))
         cx = cx[:n]; cy = cy[:n]; ss = ss[:n]; smoothed = smoothed[:n]
@@ -642,7 +647,7 @@ def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line"):
             "-i", "pipe:0",
             "-ss", f"{cs:.3f}", "-to", f"{ce:.3f}", "-i", str(src),
             "-map", "0:v", "-map", "1:a",
-            "-vf", f"ass={ass_esc}",
+            "-vf", vf,
             "-c:v", "h264_videotoolbox", "-profile:v", "high", "-level", "4.2",
             "-b:v", "10M", "-pix_fmt", "yuv420p", "-r", str(FPS),
             "-c:a", "aac", "-b:a", "256k", "-ar", "48000",
@@ -764,6 +769,92 @@ def score_features(segs, rms_clip, cs, ce):
     }
 
 
+def _clamp_overlay(text, transcript=""):
+    words = (text or "").split()
+    if len(words) > 7:
+        words = words[:7]
+    if len(words) < 5:
+        pad = (transcript or "wait watch this clip play carefully").split()
+        for w in pad:
+            if w in words:
+                continue
+            words.append(w)
+            if len(words) >= 5:
+                break
+        while len(words) < 5:
+            words.append("watch")
+    return " ".join(words)
+
+
+def _scribe_live(prompt, timeout=45.0):
+    crew = Path(os.path.expanduser("~/.claude/skills/crew/crew.sh"))
+    if not crew.exists():
+        return None
+    try:
+        subprocess.run(["bash", str(crew), "send", "scribe", prompt],
+                       check=True, timeout=15.0,
+                       capture_output=True, text=True)
+    except Exception:
+        return None
+    deadline = time.time() + timeout
+    sessions = subprocess.run(["tmux", "ls", "-F", "#{session_name}"],
+                              capture_output=True, text=True).stdout.splitlines()
+    target = next((s for s in sessions if "scribe" in s.lower()), None)
+    if not target:
+        return None
+    while time.time() < deadline:
+        time.sleep(3.0)
+        out = subprocess.run(["tmux", "capture-pane", "-t", target, "-p", "-S", "-80"],
+                             capture_output=True, text=True).stdout
+        for line in reversed(out.splitlines()):
+            s = line.strip()
+            if not s or s.startswith(">") or s.startswith("│") or s.startswith("╭") or s.startswith("╰"):
+                continue
+            wc = len(s.split())
+            if 3 <= wc <= 14 and not s.endswith(":"):
+                return s
+    return None
+
+
+def request_overlay(transcript, features):
+    stub = os.environ.get("SCRIBE_STUB")
+    if stub is not None:
+        return _clamp_overlay(stub, transcript)
+    feats = ", ".join(f"{k}={v}" for k, v in (features or {}).items())
+    prompt = (
+        "TikTok-grammar hook overlay, 5-7 words, no quotes, no trailing punctuation. "
+        f"Features: {feats}. Transcript: {transcript[:400]}"
+    )
+    live = _scribe_live(prompt)
+    if live:
+        return _clamp_overlay(live, transcript)
+    return _clamp_overlay("", transcript)
+
+
+def write_ass_overlay(text, start, end, path):
+    def ts(t):
+        h = int(t // 3600)
+        m = int((t % 3600) // 60)
+        s = t - h * 3600 - m * 60
+        return f"{h}:{m:02d}:{s:05.2f}"
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        f"PlayResX: {CANVAS_W}\n"
+        f"PlayResY: {CANVAS_H}\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
+        "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, "
+        "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        "Style: Top,Arial Black,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,"
+        "-1,0,0,0,100,100,0,0,1,4,2,8,40,40,80,1\n\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    body = f"Dialogue: 0,{ts(start)},{ts(end)},Top,,0,0,0,,{{\\an8}}{text}\n"
+    Path(path).write_text(header + body)
+
+
 def pick_variety(cands, n, min_gap=600.0):
     ranked = sorted(cands, key=lambda c: -composite_score(c))
     chosen = []
@@ -786,6 +877,7 @@ def main():
     ap.add_argument("--clip-end", type=float, default=None)
     ap.add_argument("--reframe-mode", choices=["l1", "tv"], default="l1")
     ap.add_argument("--subs-mode", choices=["line", "word"], default="line")
+    ap.add_argument("--overlay", choices=["on", "off"], default="on")
     args = ap.parse_args()
 
     src = args.input
@@ -800,8 +892,21 @@ def main():
 
     if args.clip_start is not None and args.clip_end is not None:
         out = args.outdir / "smoke.mp4"
+        overlay_text = None
+        if args.overlay != "off":
+            with tempfile.TemporaryDirectory() as td:
+                segs = transcribe(src, args.clip_start, args.clip_end, Path(td))
+            transcript = " ".join(s["text"] for s in segs).strip()
+            feats = score_features(segs, np.array([0.0]), args.clip_start, args.clip_end)
+            overlay_text = request_overlay(transcript, feats)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.with_suffix(".overlay.json").write_text(json.dumps({
+                "text": overlay_text,
+                "source_start": float(args.clip_start),
+                "source_end": float(args.clip_end),
+            }))
         render_one(src, args.clip_start, args.clip_end, out, args.reframe_mode,
-                   subs_mode=args.subs_mode)
+                   subs_mode=args.subs_mode, overlay=overlay_text)
         print(f"[v2] wrote {out}")
         deliver(out)
         return
@@ -834,8 +939,18 @@ def main():
     meta = []
     for i, c in enumerate(final, 1):
         out = shorts_dir / f"short-{i:02d}.mp4"
+        overlay_text = None
+        if args.overlay != "off":
+            tx = " ".join(s["text"] for s in c.get("segs", [])).strip()
+            overlay_text = request_overlay(tx, c.get("features", {}))
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.with_suffix(".overlay.json").write_text(json.dumps({
+                "text": overlay_text,
+                "source_start": float(c["clip_start"]),
+                "source_end": float(c["clip_end"]),
+            }))
         render_one(src, c["clip_start"], c["clip_end"], out, args.reframe_mode,
-                   subs_mode=args.subs_mode)
+                   subs_mode=args.subs_mode, overlay=overlay_text)
         deliver(out)
         transcript = [{"start": float(s["start"]), "end": float(s["end"]), "text": s["text"]}
                       for s in c.get("segs", [])]
@@ -845,6 +960,7 @@ def main():
                      "score": c["score"],
                      "hook_score": c.get("hook_score", 0.0),
                      "composite": composite_score(c),
+                     "overlay": overlay_text,
                      "transcript": transcript})
     (args.outdir / "shorts.json").write_text(json.dumps(
         {"source": str(src), "count": len(meta), "shorts": meta}, indent=2))

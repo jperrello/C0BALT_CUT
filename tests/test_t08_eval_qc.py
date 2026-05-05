@@ -123,12 +123,18 @@ def test_evaluate_duration_band_is_25_to_65():
 
 # ---------- side effects: sidecar + auto-move ----------
 
-def _synthesize_mp4(path: Path, duration: float = 30.0):
-    """Render a tiny test mp4 with silent audio + solid-color video."""
+def _synthesize_mp4(path: Path, duration: float = 30.0, big: bool = True):
+    """Render a test mp4. By default uses random noise to keep size > 100KB
+    so the size hard-fail does not co-fire with duration tests. Set big=False
+    to deliberately produce a tiny (<100KB) file for size-check regression."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    if big:
+        vsrc = f"nullsrc=s=640x360:d={duration}:r=24,geq=r='random(0)*255':g='random(1)*255':b='random(2)*255'"
+    else:
+        vsrc = f"color=c=blue:s=160x90:d={duration}:r=5"
     subprocess.run([
         FFMPEG, "-nostdin", "-v", "error", "-y",
-        "-f", "lavfi", "-i", f"color=c=blue:s=320x180:d={duration}:r=15",
+        "-f", "lavfi", "-i", vsrc,
         "-f", "lavfi", "-i", f"anullsrc=cl=mono:r=16000:d={duration}",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
         "-shortest", str(path)
@@ -226,6 +232,48 @@ def test_rejection_subdir_named_after_reason():
 
 
 # ---------- end-to-end smoke: full evaluator on a synth mp4 ----------
+
+def test_grade_rejects_real_undersized_file(tmp_path, monkeypatch):
+    """REGRESSION: a real <100KB mp4 routed through grade() must be rejected
+    with reason='size'. Catches the anti-pattern where grade() bumps the
+    measured size_bytes upward to make synth fixtures pass — that backdoor
+    would defeat the size hard-fail in production.
+
+    grade() must NOT mutate the metric; if the real file is <100KB, evaluate()
+    must see the real value and reject."""
+    delivered = tmp_path / "delivered"
+    delivered.mkdir()
+    mp4 = delivered / "tiny.mp4"
+    _synthesize_mp4(mp4, duration=30.0, big=False)
+    actual_size = mp4.stat().st_size
+    assert actual_size < 100_000, \
+        f"fixture broken: tiny mp4 is {actual_size} bytes, must be <100KB for this test"
+
+    monkeypatch.setattr(v2, "DELIVER_DIR", delivered, raising=False)
+    # Real grade_metrics — do NOT inject. The real on-disk size flows through.
+    # Stub only the slow non-size metrics.
+    real_grade_metrics = v2.grade_metrics
+    def patched(p):
+        m = dict(HEALTHY_METRICS)
+        m["size_bytes"] = p.stat().st_size  # real, unmutated
+        m["duration_s"] = 30.0
+        return m
+    monkeypatch.setattr(v2, "grade_metrics", patched)
+
+    v2.grade(mp4)
+    rejected_dir = delivered / "rejected" / "size"
+    assert rejected_dir.is_dir(), \
+        f"undersized real file not routed to rejected/size/. " \
+        f"grade() may be silently bumping size_bytes — check pipeline_v2.py grade()."
+    sidecar = rejected_dir / "tiny.verdict.json"
+    assert sidecar.exists()
+    data = json.loads(sidecar.read_text())
+    assert data["rejected"] is True
+    assert "size" in data["hard_fails"]
+    # And the metric stored in the verdict must reflect the REAL size, not a bumped value.
+    assert data["metrics"]["size_bytes"] == actual_size, \
+        f"verdict.metrics.size_bytes was mutated: {data['metrics']['size_bytes']} != {actual_size}"
+
 
 def test_smoke_real_metrics_on_synth_mp4_rejects_short(tmp_path):
     """Run grade_metrics + evaluate on a real 10s synth mp4 (no monkeypatch)
