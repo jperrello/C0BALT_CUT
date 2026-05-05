@@ -786,10 +786,18 @@ def _clamp_overlay(text, transcript=""):
     return " ".join(words)
 
 
-def _scribe_live(prompt, timeout=45.0):
+def _capture_scribe():
+    r = subprocess.run(["bash", str(Path(os.path.expanduser("~/.claude/skills/crew/crew.sh"))),
+                        "capture", "scribe", "120"],
+                       capture_output=True, text=True, timeout=10.0)
+    return r.stdout
+
+
+def _scribe_live(prompt, timeout=90.0):
     crew = Path(os.path.expanduser("~/.claude/skills/crew/crew.sh"))
     if not crew.exists():
         return None
+    before = _capture_scribe().count("⏺")
     try:
         subprocess.run(["bash", str(crew), "send", "scribe", prompt],
                        check=True, timeout=15.0,
@@ -797,22 +805,25 @@ def _scribe_live(prompt, timeout=45.0):
     except Exception:
         return None
     deadline = time.time() + timeout
-    sessions = subprocess.run(["tmux", "ls", "-F", "#{session_name}"],
-                              capture_output=True, text=True).stdout.splitlines()
-    target = next((s for s in sessions if "scribe" in s.lower()), None)
-    if not target:
-        return None
+    last = None
     while time.time() < deadline:
-        time.sleep(3.0)
-        out = subprocess.run(["tmux", "capture-pane", "-t", target, "-p", "-S", "-80"],
-                             capture_output=True, text=True).stdout
+        time.sleep(4.0)
+        out = _capture_scribe()
+        if out.count("⏺") <= before:
+            continue
         for line in reversed(out.splitlines()):
             s = line.strip()
-            if not s or s.startswith(">") or s.startswith("│") or s.startswith("╭") or s.startswith("╰"):
+            if not s.startswith("⏺"):
                 continue
-            wc = len(s.split())
-            if 3 <= wc <= 14 and not s.endswith(":"):
-                return s
+            body = s.lstrip("⏺").strip()
+            if not body:
+                continue
+            wc = len(body.split())
+            if 3 <= wc <= 14:
+                last = body
+                break
+        if last:
+            return last
     return None
 
 
