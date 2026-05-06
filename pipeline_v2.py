@@ -669,6 +669,21 @@ def grade(path):
     return verdict
 
 
+def measure_loudnorm(src, cs, ce):
+    cmd = [FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "info", "-y",
+           "-ss", f"{cs:.3f}", "-to", f"{ce:.3f}", "-i", str(src),
+           "-map", "0:a",
+           "-af", "loudnorm=I=-14:LRA=11:TP=-1.5:print_format=json",
+           "-f", "null", "-"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    txt = r.stderr
+    s = txt.find("{")
+    e = txt.rfind("}")
+    if s < 0 or e < 0:
+        raise RuntimeError(f"loudnorm measurement failed: {txt[-400:]}")
+    return json.loads(txt[s:e+1])
+
+
 def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line", overlay=None):
     out.parent.mkdir(parents=True, exist_ok=True)
     src_w, src_h = probe_size(src)
@@ -755,6 +770,13 @@ def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line", overlay=No
         n = min(len(cx), len(x_raw), len(smoothed))
         cx = cx[:n]; cy = cy[:n]; ss = ss[:n]; smoothed = smoothed[:n]
 
+        print(f"[v2] measuring loudnorm")
+        m = measure_loudnorm(src, cs, ce)
+        af = (f"loudnorm=I=-14:LRA=11:TP=-1.5"
+              f":measured_I={m['input_i']}:measured_LRA={m['input_lra']}"
+              f":measured_TP={m['input_tp']}:measured_thresh={m['input_thresh']}"
+              f":offset={m['target_offset']}:linear=true:print_format=summary")
+
         print(f"[v2] composing {n} frames → {out}")
         ffmpeg_cmd = [
             FFMPEG, "-nostdin", "-v", "error", "-y",
@@ -767,7 +789,7 @@ def render_one(src, cs, ce, out, reframe_mode="l1", subs_mode="line", overlay=No
             "-c:v", "h264_videotoolbox", "-profile:v", "high", "-level", "4.2",
             "-b:v", "10M", "-pix_fmt", "yuv420p", "-r", str(FPS),
             "-c:a", "aac", "-b:a", "256k", "-ar", "48000",
-            "-af", "loudnorm=I=-14:LRA=11:TP=-1",
+            "-af", af,
             "-movflags", "+faststart",
             str(out),
         ]
@@ -1099,11 +1121,11 @@ def main():
                 }))
             render_one(src, cs, ce, out, args.reframe_mode,
                        subs_mode=args.subs_mode, overlay=overlay_text)
-            deliver(out)
+            delivered = deliver(out)
             try:
-                rel = str(out.relative_to(ROOT))
+                rel = str(delivered.relative_to(ROOT))
             except ValueError:
-                rel = str(out)
+                rel = str(delivered)
             meta.append({"index": i, "variant": v, "file": rel,
                          "source_start": float(cs),
                          "source_end": float(ce),
