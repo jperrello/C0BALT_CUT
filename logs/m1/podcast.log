@@ -1,0 +1,56 @@
+objc[98606]: Class AVFFrameReceiver is implemented in both /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/cv2/.dylibs/libavdevice.61.3.100.dylib (0x1067e03a8) and /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/av/.dylibs/libavdevice.62.1.100.dylib (0x1134f03a8). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[98606]: Class AVFAudioReceiver is implemented in both /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/cv2/.dylibs/libavdevice.61.3.100.dylib (0x1067e03f8) and /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/av/.dylibs/libavdevice.62.1.100.dylib (0x1134f03f8). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+[v2] source: source/vod-podcast.mp4 (3854.1s, 1920x1080)
+[v2] computing audio RMS
+[v2] detecting scenes
+[v2] shortlisted 6 candidates, transcribing for hook_score
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files: 100%|██████████| 4/4 [00:00<00:00, 78398.21it/s]
+[v2] extracting clip 476.98-506.98s (30.00s) → work.mp4
+[v2] detecting faces (MediaPipe)
+[v2] face hit rate: 6.9% (901 frames)
+[v2] reframe signal (win=824px, range=[0,1096])
+[v2] reframe: mean=374 range=[158,774]
+[v2] transcribing
+[v2] composing 901 frames → delivered/m1/podcast/shorts/short-01-a.mp4
+[v2] delivered → /Users/jperr/Documents/shorts/delivered/20260505T175043-short-01-a.mp4
+[v2] extracting clip 471.98-501.98s (30.00s) → work.mp4
+[v2] detecting faces (MediaPipe)
+[v2] face hit rate: 9.5% (902 frames)
+[v2] reframe signal (win=824px, range=[0,1096])
+[v2] reframe: mean=377 range=[158,602]
+[v2] transcribing
+[v2] composing 902 frames → delivered/m1/podcast/shorts/short-01-b.mp4
+[v2] delivered → /Users/jperr/Documents/shorts/delivered/20260505T175202-short-01-b.mp4
+[v2] extracting clip 1548.17-1578.17s (30.00s) → work.mp4
+[v2] detecting faces (MediaPipe)
+[v2] face hit rate: 14.1% (902 frames)
+[v2] reframe signal (win=824px, range=[0,1096])
+[v2] reframe: mean=253 range=[-0,613]
+[v2] transcribing
+[v2] composing 902 frames → delivered/m1/podcast/shorts/short-02-a.mp4
+[v2] delivered → /Users/jperr/Documents/shorts/delivered/20260505T175455-short-02-a.mp4
+[v2] extracting clip 1543.17-1573.17s (30.00s) → work.mp4
+[v2] detecting faces (MediaPipe)
+[v2] face hit rate: 19.2% (902 frames)
+[v2] reframe signal (win=824px, range=[0,1096])
+[v2] reframe: mean=238 range=[-0,933]
+[v2] transcribing
+[v2] composing 902 frames → delivered/m1/podcast/shorts/short-02-b.mp4
+[v2] delivered → /Users/jperr/Documents/shorts/delivered/20260505T175616-short-02-b.mp4
+[v2] extracting clip 3154.90-3184.90s (30.00s) → work.mp4
+[v2] detecting faces (MediaPipe)
+[v2] face hit rate: 23.3% (902 frames)
+[v2] reframe signal (win=824px, range=[0,1096])
+[v2] reframe: mean=245 range=[-0,569]
+[v2] transcribing
+[v2] composing 902 frames → delivered/m1/podcast/shorts/short-03-a.mp4
+[v2] delivered → /Users/jperr/Documents/shorts/delivered/20260505T175941-short-03-a.mp4
+[v2] extracting clip 3149.90-3179.90s (30.00s) → work.mp4
+[v2] detecting faces (MediaPipe)
+[v2] face hit rate: 20.1% (902 frames)
+[v2] reframe signal (win=824px, range=[0,1096])
+[v2] reframe: mean=262 range=[-0,567]
+[v2] transcribing
+[v2] composing 902 frames → delivered/m1/podcast/shorts/short-03-b.mp4
+[v2] delivered → /Users/jperr/Documents/shorts/delivered/20260505T180100-short-03-b.mp4
+[v2] wrote 6 shorts
