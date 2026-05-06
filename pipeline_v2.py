@@ -835,6 +835,17 @@ def shape_window(seg, rms, dur_min=30.0, dur_max=60.0, target=45.0, lead=1.0):
     return float(cs), float(ce)
 
 
+def variant_windows(clip_start, clip_end, payoff_abs):
+    dur = float(clip_end) - float(clip_start)
+    cs_a = float(clip_start)
+    ce_a = cs_a + dur
+    cs_b = cs_a - 5.0
+    ce_b = cs_b + dur
+    if (cs_a, ce_a) == (cs_b, ce_b):
+        raise ValueError("variant_windows collapsed to identical bounds")
+    return [(cs_a, ce_a), (cs_b, ce_b)]
+
+
 def pick(cands, n=3, min_gap=90.0):
     cands = sorted(cands, key=lambda x: -x["score"])
     chosen = []
@@ -1065,30 +1076,43 @@ def main():
     shorts_dir.mkdir(parents=True, exist_ok=True)
     meta = []
     for i, c in enumerate(final, 1):
-        out = shorts_dir / f"short-{i:02d}.mp4"
+        a, b = int(c["clip_start"]), min(int(c["clip_end"]), len(rms))
+        payoff_abs = float(a + int(np.argmax(rms[a:b]))) if b > a else float(c["clip_start"])
+        c["payoff_abs"] = payoff_abs
         overlay_text = None
         if args.overlay != "off":
             tx = " ".join(s["text"] for s in c.get("segs", [])).strip()
             overlay_text = request_overlay(tx, c.get("features", {}))
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.with_suffix(".overlay.json").write_text(json.dumps({
-                "text": overlay_text,
-                "source_start": float(c["clip_start"]),
-                "source_end": float(c["clip_end"]),
-            }))
-        render_one(src, c["clip_start"], c["clip_end"], out, args.reframe_mode,
-                   subs_mode=args.subs_mode, overlay=overlay_text)
-        deliver(out)
         transcript = [{"start": float(s["start"]), "end": float(s["end"]), "text": s["text"]}
                       for s in c.get("segs", [])]
-        meta.append({"index": i, "file": str(out.relative_to(ROOT)),
-                     "source_start": c["clip_start"],
-                     "source_end": c["clip_end"],
-                     "score": c["score"],
-                     "hook_score": c.get("hook_score", 0.0),
-                     "composite": composite_score(c),
-                     "overlay": overlay_text,
-                     "transcript": transcript})
+        variants = list(zip(("-a", "-b"), variant_windows(c["clip_start"], c["clip_end"], payoff_abs)))
+        for variant in variants:
+            suffix, (cs, ce) = variant
+            v = suffix[-1]
+            out = shorts_dir / f"short-{i:02d}{suffix}.mp4"
+            if overlay_text is not None:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.with_suffix(".overlay.json").write_text(json.dumps({
+                    "text": overlay_text,
+                    "source_start": float(cs),
+                    "source_end": float(ce),
+                }))
+            render_one(src, cs, ce, out, args.reframe_mode,
+                       subs_mode=args.subs_mode, overlay=overlay_text)
+            deliver(out)
+            try:
+                rel = str(out.relative_to(ROOT))
+            except ValueError:
+                rel = str(out)
+            meta.append({"index": i, "variant": v, "file": rel,
+                         "source_start": float(cs),
+                         "source_end": float(ce),
+                         "payoff_abs": payoff_abs,
+                         "score": c["score"],
+                         "hook_score": c.get("hook_score", 0.0),
+                         "composite": composite_score(c),
+                         "overlay": overlay_text,
+                         "transcript": transcript})
     (args.outdir / "shorts.json").write_text(json.dumps(
         {"source": str(src), "count": len(meta), "shorts": meta}, indent=2))
     print(f"[v2] wrote {len(meta)} shorts")
