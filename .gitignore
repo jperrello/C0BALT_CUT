@@ -1,18 +1,42 @@
-.runtime/
-.claude/
-.logs/
+# Python
 __pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Local Claude scratch (not skills)
+.claude/local/
+.claude/.local/
+
+# Logs / runtime
+.runtime/
+.logs/
+logs/
 state.json
-CLAUDE.md
-CLAUDE.local.md
+
+# Secrets
+.env
+.env.local
+
+# Media artifacts (inputs + outputs)
+input/
 source/
 output/
 delivered/
-input/
 models/
 *.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.m4a
 
-# Beads / Dolt files (added by bd init)
+# macOS
+.DS_Store
+
+# Beads / Dolt
 .dolt/
 *.db
 .beads-credential-key

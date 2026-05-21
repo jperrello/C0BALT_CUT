@@ -1,43 +1,48 @@
 # shorts
 
-## Deliverable Contract
+Modular shorts production. Every step of turning a long horizontal video into a vertical short is an atomic Claude Code skill — each callable on its own, chainable into a full pipeline.
 
-**Every render-producing bead MUST copy the final artifact to
-`/Users/jperr/Documents/shorts/delivered/` before the bead is closed.**
+## Stack
 
-Trust in the pipeline requires that the human can open QuickTime and watch what you
-produced. The delivery dir is an **absolute path** so every render lands in one stable
-place the user can browse.
+- **whisper.cpp** (local, Metal) — transcription with word timestamps, using a local GGML model
+- **Claude** (via Claude Code session + optional `/crew` tmux members) — segment ranking, active-speaker picking, semantic judgment. No API key required.
+- **ffmpeg** — all media operations (cut, crop, loudnorm, burn-in)
+- **MediaPipe** — face detection (boxes only; Claude picks the active speaker)
+- **Rails + Sidekiq** — optional thin wrapper for upload UI + job queue (not required to use the skills)
 
-**Naming:** `/Users/jperr/Documents/shorts/delivered/<bead-id>-<timestamp>-<stem>.mp4`
+## Goal
 
-- `<bead-id>` — `BEADS_CURRENT` env var, or regex `sh-[a-z0-9]+` against the current
-  git branch name; falls back to timestamp-only if neither is available.
-- `<timestamp>` — local `YYYYMMDDTHHMMSS`.
-- `<stem>` — output basename (e.g. `smoke`, `short-01`).
+Upload a horizontal video → identify the speaker → reframe to keep them in shot → burn subtitles → cut N shorts → drop them in `./output/<source-video-name>/` for easy browsing.
 
-**Pipeline enforcement:** `pipeline_v2.py` calls `deliver(out)` after every successful
-render (both `--clip-start/--clip-end` smoke mode and full multi-short mode). Any new
-render path (future `pipeline_v3.py`, alt renderers) MUST invoke `deliver()` or
-replicate the same copy-to-`delivered/` behaviour.
+## Skills
 
-**Render-bead checklist before close:**
+Skills live in `.claude/skills/<name>/SKILL.md`. Invoke any one directly via Claude Code, or chain them.
 
-1. `ls -la /Users/jperr/Documents/shorts/delivered/` shows the new `.mp4`.
-2. File is non-empty (>100KB for a ~30s 9:16 short).
-3. You have not overwritten or deleted any pre-existing files there.
+| Skill | Purpose |
+|---|---|
+| `transcribe` | Video → JSON transcript with word timestamps (whisper.cpp local) |
+| `detect-faces` | Per-frame face boxes via MediaPipe |
+| `pick-speaker` | Claude picks active speaker face per span using boxes + transcript |
+| `reframe-vertical` | Apply speaker-tracked 9:16 crop path via ffmpeg |
+| `pick-segments` | Claude ranks transcript spans (+ RMS energy) → N clip-worthy spans |
+| `burn-subtitles` | Build ASS from word times, burn with ffmpeg |
+| `loudnorm` | Two-pass ffmpeg loudnorm to broadcast levels |
+| `cut-clip` | ffmpeg trim to span |
+| `qc-clip` | ffprobe sanity (duration, size) |
+| `save-local` | Drop renders into `./output/<source-name>/` |
 
-## Crew workflow (per CONTEXT.md D-07)
+## Setup
 
-No worktrees, no per-bead branches — everything commits straight to `main`. The
-loop for a working bead is:
+```bash
+cp .env.example .env  # paths to whisper-cli + your local GGML model
+brew install ffmpeg whisper-cpp
+pip install mediapipe opencv-python numpy
+```
 
-1. **Bead** — pick up an open bead matching your lane (`surface=` label).
-2. **in_progress** — `bd update <id> --status in_progress` before writing code.
-3. **Commit to main** — small focused commit on `main`, scoped to the bead.
-4. **Brutus smoke** — render-shipping beads route through `brutus` for the
-   smoke-clip + delivery-contract check (D-10).
-5. **Close** — `bd close <id>` once brutus signs off.
+## Status
 
-Crew members coordinate by `surface` so two in-progress beads do not share a
-file region. `delivered/` is append-only — the crew never deletes from it.
+Skills are scaffolded as stubs. Implementation tracked in `bd ready`.
+
+## Pre-pivot archive
+
+The previous Python pipeline (whisperX, mlx-whisper, ranker/grader/subtitler in `pipeline_v2.py`) is preserved on the `archive/pre-pivot` branch.
