@@ -30,4 +30,4 @@ On failure, `pass: false` and `reason` contains the first failing check (e.g. `"
 3. Print/return verdict JSON.
 
 ## Status
-Stub. Implementation: `bd ready`.
+Implemented — `qc-clip.sh`.

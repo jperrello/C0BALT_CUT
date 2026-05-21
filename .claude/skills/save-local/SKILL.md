@@ -23,4 +23,4 @@ Path to the saved file: `<OUTPUT_DIR>/<source-stem>/<name>`. Returns the path.
 5. Print the absolute destination path so the user can open it.
 
 ## Status
-Stub. Implementation: `bd ready`.
+Implemented — `save-local.sh`.

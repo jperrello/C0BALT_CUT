@@ -23,4 +23,4 @@ Single-panel speaker-tracked vertical crop. No PiP, no screen-share tiling — j
 4. Run ffmpeg, scaling to target resolution.
 
 ## Status
-Stub. Implementation: `bd ready`. The salvageable crop-path-smoothing logic lives in `archive/pre-pivot:pipeline_v2.py:178-238`.
+Implemented — `reframe-vertical.sh` / `reframe_vertical.py`. Crop centers are smoothed with a forward/backward exponential filter and driven through ffmpeg `sendcmd` (the crop filter exposes `x`/`y` as runtime commands).

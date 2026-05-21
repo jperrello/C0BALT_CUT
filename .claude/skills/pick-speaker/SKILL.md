@@ -34,4 +34,4 @@ One entry per transcript segment. `speaker_box` is the box to follow during that
 For batch processing, this skill can be invoked from a `/crew` member to parallelize Claude calls across spans.
 
 ## Status
-Stub. Implementation: `bd ready`.
+Implemented — `pick-speaker.sh` / `pick_speaker.py`. Ships a deterministic dominant-face heuristic: face boxes in each segment window are spatially clustered, the cluster scoring highest on persistence × size wins, and low-confidence spans inherit a confident neighbour's box. The Claude-vision multi-face arbitration in step 4 above is the planned upgrade for ambiguous multi-speaker footage.

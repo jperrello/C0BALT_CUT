@@ -20,12 +20,13 @@ Skills live in `.claude/skills/<name>/SKILL.md`. Invoke any one directly via Cla
 
 | Skill | Purpose |
 |---|---|
+| `ingest` | YouTube URL → `work/<id>/source.mp4` + `ingest.json` (yt-dlp) |
 | `transcribe` | Video → JSON transcript with word timestamps (whisper.cpp local) |
 | `detect-faces` | Per-frame face boxes via MediaPipe |
-| `pick-speaker` | Claude picks active speaker face per span using boxes + transcript |
-| `reframe-vertical` | Apply speaker-tracked 9:16 crop path via ffmpeg |
+| `pick-speaker` | Dominant-face heuristic over boxes → active-speaker box per span |
+| `reframe-vertical` | Speaker-tracked 9:16 crop path via ffmpeg `sendcmd` |
 | `pick-segments` | Claude ranks transcript spans (+ RMS energy) → N clip-worthy spans |
-| `burn-subtitles` | Build ASS from word times, burn with ffmpeg |
+| `burn-subtitles` | Word-timed subtitles burned in as a PNG overlay sequence |
 | `loudnorm` | Two-pass ffmpeg loudnorm to broadcast levels |
 | `cut-clip` | ffmpeg trim to span |
 | `qc-clip` | ffprobe sanity (duration, size) |
@@ -35,13 +36,25 @@ Skills live in `.claude/skills/<name>/SKILL.md`. Invoke any one directly via Cla
 
 ```bash
 cp .env.example .env  # paths to whisper-cli + your local GGML model
-brew install ffmpeg whisper-cpp
+brew install ffmpeg whisper-cpp yt-dlp
 pip install mediapipe opencv-python numpy
 ```
 
+## Run the whole pipeline
+
+```bash
+./shorts.sh <youtube-url> [n=5] [dmin=20] [dmax=60]
+```
+
+Drives the full chain — ingest → transcribe → detect-faces → pick-speaker →
+pick-segments → per span (cut → reframe → subtitles → loudnorm → qc → save).
+Intermediate JSON/video lands in `work/<id>/`; finished shorts in
+`./output/<source-name>/`. Per-clip transcript and speaker tracks are sliced to
+clip-local time by `rebase.py`. Re-runs are cheap — every skill caches on mtime.
+
 ## Status
 
-Skills are scaffolded as stubs. Implementation tracked in `bd ready`.
+All skills implemented; `./shorts.sh` drives them end to end.
 
 ## Pre-pivot archive
 
