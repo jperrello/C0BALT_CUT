@@ -33,5 +33,8 @@ MediaPipe Face Detector. Boxes only — no identity, no recognition.
 3. Convert relative bbox → absolute pixel coords.
 4. Write JSON.
 
-## Status
-Stub. Implementation: `bd ready`.
+## Run
+```
+.claude/skills/detect-faces/detect-faces.sh <input> [out] [fps]
+```
+Defaults: `out=<input>.faces.json`, `fps=5`. Re-running is a no-op when the output mtime is newer than the input.
