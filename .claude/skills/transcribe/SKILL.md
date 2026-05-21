@@ -35,5 +35,8 @@ JSON shaped as:
 3. Pipe to `whisper-cli --model "$WHISPER_MODEL" --output-json-full --no-prints -l <lang>`.
 4. Parse whisper-cli's JSON; flatten tokens into `words[]`, group by segment into `segments[]`.
 
-## Status
-Stub. Implementation: `bd ready`.
+## Run
+```
+.claude/skills/transcribe/transcribe.sh <input> [out.json] [lang]
+```
+Idempotent: skips work if `out` is newer than `input`. Uses `--max-len 1 --split-on-word` for word-level segments; groups into sentence segments on `.!?` or every 18 words.
