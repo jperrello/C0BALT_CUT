@@ -23,5 +23,7 @@ mp4 cut to the requested range.
 - Re-encode (frame-accurate):
   `ffmpeg -i <in> -ss <t0> -to <t1> -c:v libx264 -preset veryfast -crf 18 -c:a aac <out>`
 
-## Status
-Stub. Trivial. Implementation: `bd ready`.
+## Invoke
+`.claude/skills/cut-clip/cut-clip.sh <input> <t0> <t1> <out> [reencode]`
+
+Idempotent via mtime check (skips when out is newer than input).
