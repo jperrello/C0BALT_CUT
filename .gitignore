@@ -40,3 +40,5 @@ models/
 .dolt/
 *.db
 .beads-credential-key
+work/
+out/
