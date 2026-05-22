@@ -45,10 +45,15 @@ step "pick-speaker"
 speaker="$dir/speaker.json"
 bash "$(skill pick-speaker)" "$transcript" "$faces" "$src" "$speaker" >/dev/null || die "pick-speaker"
 
-# 5. pick-segments ----------------------------------------------------------
+# 5. segment-topics ---------------------------------------------------------
+step "segment-topics"
+topics="$dir/topics.json"
+bash "$(skill segment-topics)" "$transcript" "$topics" >/dev/null || die "segment-topics"
+
+# 6. pick-segments ----------------------------------------------------------
 step "pick-segments (n=$n)"
 segments="$dir/segments.json"
-bash "$(skill pick-segments)" "$transcript" "$segments" "$n" "$dmin" "$dmax" >/dev/null || die "pick-segments"
+bash "$(skill pick-segments)" "$transcript" "$segments" "$n" "$dmin" "$dmax" "$topics" >/dev/null || die "pick-segments"
 
 count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["shorts"]))' "$segments")"
 echo "shorts: $count candidate span(s)" >&2

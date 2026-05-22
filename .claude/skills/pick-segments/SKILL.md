@@ -10,6 +10,7 @@ Claude-driven segment selection. No heuristics — Claude judges what's clip-wor
 ## Inputs
 - `transcript`: path to `transcribe` output JSON
 - `audio_rms` (optional): path to a per-second RMS energy JSON (computed inline if missing)
+- `topics` (optional): path to a `segment-topics` output JSON. Auto-discovered as `topics.json` next to the transcript. When present, every picked span is required to lie entirely within one topic — spans that straddle a topic boundary are dropped. This is what prevents shorts that jump between unrelated subjects.
 - `n`: number of shorts to pick, default `5`
 - `duration` (optional): target duration range, default `[20, 60]` seconds
 - `out` (optional): output JSON path

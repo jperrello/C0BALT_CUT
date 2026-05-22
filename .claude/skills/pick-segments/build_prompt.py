@@ -3,10 +3,17 @@
 import json, sys
 
 transcript_path, rms_path, n, dmin, dmax = sys.argv[1:6]
+topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
 
 tx = json.load(open(transcript_path))
 rms = json.load(open(rms_path))
+topics = []
+if topics_path:
+    try:
+        topics = json.load(open(topics_path)).get("topics", [])
+    except FileNotFoundError:
+        topics = []
 
 segments = tx.get("segments") or []
 if not segments and tx.get("words"):
@@ -47,6 +54,20 @@ for s in segments:
     lines.append(f"[{s['t0']:.1f}-{s['t1']:.1f}] {s['text'].strip()}")
 transcript_block = "\n".join(lines)
 
+if topics:
+    topic_block = "\n".join(
+        f"  topic {i+1} [{t['t0']:.1f}-{t['t1']:.1f}] {t.get('title','')}: {t.get('summary','')}"
+        for i, t in enumerate(topics)
+    )
+    topic_rules = f"""
+TOPIC BOUNDARIES (HARD CONSTRAINT):
+{topic_block}
+
+Each picked span MUST lie entirely within ONE topic — never straddle a boundary. A short that crosses topics reads as two unrelated clips spliced together; that is the failure mode we are explicitly preventing. If a topic is shorter than {dmin:.0f}s, skip it. You do not need to pick from every topic; pick the {n} strongest single-topic moments overall.
+"""
+else:
+    topic_rules = ""
+
 print(f"""You are picking clip-worthy spans for vertical shorts.
 
 Source duration: {duration:.1f}s
@@ -55,7 +76,7 @@ Audio energy (per ~1s of source, bucketed to ~60 bins, ▁ low → █ high):
 
 Transcript (timestamped lines, seconds):
 {transcript_block}
-
+{topic_rules}
 Pick {n} non-overlapping spans, each {dmin:.0f}-{dmax:.0f} seconds long, that would work as standalone shorts. Favor self-contained moments: a punchline, a reaction, a complete thought, a strong reveal. Avoid mid-sentence cuts.
 
 Reply with ONLY a JSON object (no prose, no code fences):

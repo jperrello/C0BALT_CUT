@@ -7,10 +7,16 @@ out="${2:-}"
 n="${3:-5}"
 dmin="${4:-20}"
 dmax="${5:-60}"
+topics="${6:-}"
 
 if [[ -z "$transcript" ]]; then
-  echo "usage: pick-segments.sh <transcript.json> [out.json] [n=5] [dmin=20] [dmax=60]" >&2
+  echo "usage: pick-segments.sh <transcript.json> [out.json] [n=5] [dmin=20] [dmax=60] [topics.json]" >&2
   exit 2
+fi
+# Auto-discover topics.json next to the transcript if not passed
+if [[ -z "$topics" ]]; then
+  cand="$(dirname "$transcript")/topics.json"
+  [[ -f "$cand" ]] && topics="$cand"
 fi
 if [[ ! -f "$transcript" ]]; then
   echo "pick-segments: transcript not found: $transcript" >&2
@@ -25,6 +31,10 @@ fi
 
 if [[ -f "$out" ]]; then
   in_mtime="$(stat -f %m "$transcript" 2>/dev/null || stat -c %Y "$transcript")"
+  if [[ -n "$topics" && -f "$topics" ]]; then
+    tp_mtime="$(stat -f %m "$topics" 2>/dev/null || stat -c %Y "$topics")"
+    [[ "$tp_mtime" -gt "$in_mtime" ]] && in_mtime="$tp_mtime"
+  fi
   out_mtime="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
   if [[ "$out_mtime" -ge "$in_mtime" ]]; then
     echo "pick-segments: cache hit at $out" >&2
@@ -45,7 +55,7 @@ else
 fi
 
 prompt_file="$tmp/prompt.txt"
-python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" > "$prompt_file"
+python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" "${topics:-}" > "$prompt_file"
 
 reply="$tmp/reply.txt"
 claude -p --output-format text < "$prompt_file" > "$reply" 2>"$tmp/claude.err" || {
@@ -54,6 +64,6 @@ claude -p --output-format text < "$prompt_file" > "$reply" 2>"$tmp/claude.err" |
   exit 1
 }
 
-python3 "$here/parse_reply.py" "$reply" "$n" "$dmin" "$dmax" "$transcript" > "$out"
+python3 "$here/parse_reply.py" "$reply" "$n" "$dmin" "$dmax" "$transcript" "${topics:-}" > "$out"
 echo "pick-segments: wrote $out" >&2
 echo "$out"

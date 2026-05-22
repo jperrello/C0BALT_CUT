@@ -3,7 +3,21 @@
 import json, re, sys
 
 reply_path, n, dmin, dmax, transcript_path = sys.argv[1:6]
+topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
+
+topics = []
+if topics_path:
+    try:
+        topics = json.load(open(topics_path)).get("topics", [])
+    except FileNotFoundError:
+        topics = []
+
+def topic_of(t0, t1):
+    for t in topics:
+        if t0 >= t["t0"] - 0.25 and t1 <= t["t1"] + 0.25:
+            return t
+    return None
 
 text = open(reply_path).read()
 m = re.search(r"\{.*\}", text, re.S)
@@ -29,13 +43,20 @@ for sh in data.get("shorts", []):
         continue
     if any(not (t1 <= a or t0 >= b) for a, b in seen):
         continue
+    tp = topic_of(t0, t1) if topics else None
+    if topics and tp is None:
+        print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (crosses topic boundary)", file=sys.stderr)
+        continue
     seen.append((t0, t1))
-    shorts.append({
+    item = {
         "t0": round(t0, 2),
         "t1": round(t1, 2),
         "rationale": sh.get("rationale", "")[:280],
         "title_suggestion": sh.get("title_suggestion", "")[:120],
-    })
+    }
+    if tp is not None:
+        item["topic"] = tp.get("title", "")
+    shorts.append(item)
     if len(shorts) >= n:
         break
 
