@@ -21,15 +21,18 @@ duration = segments[-1]["t1"] if segments else 0
 lines = [f"[{s['t0']:.1f}-{s['t1']:.1f}] {s['text'].strip()}" for s in segments]
 block = "\n".join(lines)
 
-# Target topic count: roughly one per ~90s, clamped to [3, 20]
-target = max(3, min(20, int(duration / 90) or 3))
+# Target topic count: roughly one per ~45s, clamped to [4, 40].
+# Tighter than before so downstream pick-segments has less room to straddle.
+target = max(4, min(40, int(duration / 45) or 4))
 
 print(f"""You are splitting a video transcript into contiguous TOPICAL CHAPTERS.
 
-A "topic" is one self-contained subject: one bit, one anecdote, one challenge, one rant, one segment of an interview. When the speaker changes subject — new game, new story, new question, scene cut to unrelated footage — that is a topic boundary.
+A "topic" is ONE self-contained subject: one bit, one anecdote, one challenge, one rant, one question-and-answer, one game moment, one reaction story. The instant the speaker pivots — new game, new story, new question, scene change, new opponent, "anyway / so / next / now / okay so" pivots that introduce a different subject — you START A NEW TOPIC.
+
+Err HEAVILY on the side of MORE, SHORTER topics. A topic that lumps two unrelated bits together causes downstream shorts that jump between subjects, which is a hard failure. A topic that is "too narrow" is harmless.
 
 Source duration: {duration:.1f}s
-Target: about {target} topics. Favor fewer, longer topics over many short ones. Do not split inside a single coherent thought.
+Target: about {target} topics. If in doubt between one big topic and two smaller ones, choose two smaller ones.
 
 Transcript (timestamped lines, seconds):
 {block}
@@ -39,6 +42,7 @@ Requirements:
 - Together they cover [0, {duration:.1f}].
 - t0 and t1 should land on the boundaries of the transcript lines above (don't cut mid-line).
 - Each topic gets a short title (≤8 words) and a one-sentence summary.
+- A topic should generally be 20-90s. Avoid topics longer than ~120s — split instead.
 
 Reply with ONLY a JSON object (no prose, no code fences):
 {{"topics": [{{"t0": <float>, "t1": <float>, "title": "<short>", "summary": "<one sentence>"}}]}}""")

@@ -4,31 +4,32 @@
 import json, math, os, struct, subprocess, sys
 from PIL import Image, ImageDraw, ImageFont
 
-transcript = sys.argv[1]
+src_data = sys.argv[1]       # transcript.json OR chunks.json (style decides)
 seqdir = sys.argv[2]
 W = int(sys.argv[3])
 H = int(sys.argv[4])
 fps = float(sys.argv[5])
 nframes = int(sys.argv[6])
-style = sys.argv[7] if len(sys.argv) > 7 else "word-karaoke"
+style = sys.argv[7] if len(sys.argv) > 7 else "chunks"
 fs = int(sys.argv[8]) if len(sys.argv) > 8 else 72
 video = sys.argv[9] if len(sys.argv) > 9 else None
 
-FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-WHITE = (255, 255, 255, 255)
-ACCENT = (255, 214, 51, 255)
+FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
+WHITE = (245, 245, 240, 255)
+ACCENT = (0, 229, 255, 255)   # electric cyan — deliberate brand accent
 STROKE = (0, 0, 0, 255)
 
-with open(transcript) as f:
-    tr = json.load(f)
-words = [w for w in tr.get("words", []) if str(w.get("w", "")).strip()]
-segments = [s for s in tr.get("segments", []) if str(s.get("text", "")).strip()]
+# rolling-window tuning (legacy word-karaoke style only)
+WINDOW = 4
+PAUSE_GAP = 0.6
+SLIDE_IN = 0.08
+SLIDE_PX = 8
 
 font = ImageFont.truetype(FONT, fs)
-stroke = max(2, fs // 14)
+stroke = max(3, fs // 10)
 maxw = W - int(W * 0.12)
 lineh = int(fs * 1.25)
-marginv = max(40, int(H * 0.16))
+marginv = max(40, int(H * 0.22))
 
 
 def rms_hot(path):
@@ -71,12 +72,11 @@ def wrap(tokens):
     return lines
 
 
-# tokens: list of (text, color). renders one cached PNG per distinct state.
 cache = {}
 
 
 def render(tokens):
-    key = tuple(tokens)
+    key = tokens
     if key in cache:
         return cache[key]
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -84,15 +84,15 @@ def render(tokens):
         d = ImageDraw.Draw(img)
         space = font.getlength(" ")
         lines = wrap(tokens)
-        total_h = len(lines) * lineh
-        y = H - marginv - total_h
+        y = marginv
         for ln in lines:
             lw = sum(font.getlength(t[0]) for t in ln) + space * (len(ln) - 1)
             x = (W - lw) / 2
-            for text, color in ln:
-                d.text((x, y), text, font=font, fill=color,
+            for text, color, yoff in ln:
+                bw = font.getlength(text)
+                d.text((x, y + yoff), text, font=font, fill=color,
                        stroke_width=stroke, stroke_fill=STROKE)
-                x += font.getlength(text) + space
+                x += bw + space
             y += lineh
     path = os.path.join(seqdir, f"_state{len(cache):04d}.png")
     img.save(path)
@@ -100,32 +100,68 @@ def render(tokens):
     return path
 
 
-# build a per-frame state list
 states = [() for _ in range(nframes)]
 
-if style == "word-karaoke" and words:
-    groups, cur = [], [words[0]]
-    for w in words[1:]:
-        if w["t0"] - cur[-1]["t1"] > 0.6 or len(cur) >= 6:
-            groups.append(cur)
-            cur = [w]
-        else:
-            cur.append(w)
-    groups.append(cur)
-    for g in groups:
-        g0, g1 = g[0]["t0"], g[-1]["t1"]
-        for i in range(nframes):
-            t = i / fps
-            if not (g0 <= t <= g1 + 0.25):
+if style == "chunks":
+    # Phrase-chunk rendering. The whole chunk shows for its [t0, t1] window;
+    # the currently-spoken word is cyan, the rest are white. Chunks hard-cut.
+    doc = json.load(open(src_data))
+    chunks = doc.get("chunks", [])
+    for fi in range(nframes):
+        t = fi / fps
+        active = None
+        for c in chunks:
+            if c["t0"] <= t < c["t1"]:
+                active = c
+                break
+        # also show chunk just after its end for a small tail so the last word
+        # doesn't vanish the instant it's spoken
+        if active is None:
+            for c in chunks:
+                if c["t1"] <= t <= c["t1"] + 0.25:
+                    active = c
+                    break
+        if active is None:
+            continue
+        toks = []
+        for w in active["words"]:
+            color = ACCENT if (w["t0"] <= t <= w["t1"]) else WHITE
+            toks.append((str(w["w"]).strip(), color, 0))
+        states[fi] = tuple(toks)
+elif style == "word-karaoke":
+    tr = json.load(open(src_data))
+    words = [w for w in tr.get("words", []) if str(w.get("w", "")).strip()]
+    spans = []
+    for i, w in enumerate(words):
+        vis_in = w["t0"]
+        bump = words[i + WINDOW]["t0"] if i + WINDOW < len(words) else None
+        gap_exit = None
+        for j in range(i, len(words) - 1):
+            if words[j + 1]["t0"] - words[j]["t1"] > PAUSE_GAP:
+                gap_exit = words[j]["t1"] + 0.15
+                break
+        if gap_exit is None and bump is None:
+            gap_exit = words[-1]["t1"] + 0.30
+        vis_out = min(x for x in (bump, gap_exit) if x is not None)
+        spans.append((vis_in, vis_out))
+    for fi in range(nframes):
+        t = fi / fps
+        toks = []
+        for wi, w in enumerate(words):
+            vis_in, vis_out = spans[wi]
+            if t < vis_in or t >= vis_out:
                 continue
-            active = 0
-            for j, w in enumerate(g):
-                if t >= w["t0"]:
-                    active = j
-            states[i] = tuple(
-                (str(w["w"]).strip(), ACCENT if j == active else WHITE)
-                for j, w in enumerate(g))
+            if t < vis_in + SLIDE_IN:
+                p = (t - vis_in) / SLIDE_IN
+                yoff = int(round(SLIDE_PX * (1.0 - p)))
+            else:
+                yoff = 0
+            color = ACCENT if w["t0"] <= t <= w["t1"] else WHITE
+            toks.append((str(w["w"]).strip(), color, yoff))
+        states[fi] = tuple(toks)
 else:
+    tr = json.load(open(src_data))
+    segments = [s for s in tr.get("segments", []) if str(s.get("text", "")).strip()]
     keep = segments
     if style == "selective" and video:
         hot = rms_hot(video)
@@ -137,18 +173,17 @@ else:
             print("burn-subtitles: selective found no hot spans, burning all",
                   file=sys.stderr)
     for s in keep:
-        for i in range(nframes):
-            t = i / fps
+        for fi in range(nframes):
+            t = fi / fps
             if s["t0"] <= t <= s["t1"] + 0.25:
-                states[i] = tuple((tok, WHITE) for tok in str(s["text"]).split())
+                states[fi] = tuple((tok, WHITE, 0) for tok in str(s["text"]).split())
 
-# write the numbered frame sequence (hardlink duplicates for speed)
 shown = 0
-for i in range(nframes):
-    src = render(states[i])
-    if states[i]:
+for fi in range(nframes):
+    src = render(states[fi])
+    if states[fi]:
         shown += 1
-    dst = os.path.join(seqdir, f"{i + 1:06d}.png")
+    dst = os.path.join(seqdir, f"{fi + 1:06d}.png")
     if os.path.exists(dst):
         os.remove(dst)
     os.link(src, dst)

@@ -28,6 +28,7 @@ meta="$(bash "$(skill ingest)" "$url")" || die "ingest"
 id="$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 src="$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["path"])')"
 dir="$(dirname "$src")"
+ingest_json="$dir/ingest.json"
 echo "shorts: work dir $dir" >&2
 
 # 2. transcribe -------------------------------------------------------------
@@ -52,14 +53,19 @@ bash "$(skill segment-topics)" "$transcript" "$topics" >/dev/null || die "segmen
 
 # 6. pick-segments ----------------------------------------------------------
 step "pick-segments (n=$n)"
+segments_raw="$dir/segments.raw.json"
+bash "$(skill pick-segments)" "$transcript" "$segments_raw" "$n" "$dmin" "$dmax" "$topics" >/dev/null || die "pick-segments"
+
+# 7. verify-coherence (tightens incoherent spans) --------------------------
+step "verify-coherence"
 segments="$dir/segments.json"
-bash "$(skill pick-segments)" "$transcript" "$segments" "$n" "$dmin" "$dmax" "$topics" >/dev/null || die "pick-segments"
+bash "$(skill verify-coherence)" "$segments_raw" "$transcript" "$segments" "$dmin" >/dev/null || die "verify-coherence"
 
 count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["shorts"]))' "$segments")"
-echo "shorts: $count candidate span(s)" >&2
-[[ "$count" -gt 0 ]] || die "pick-segments returned no spans"
+echo "shorts: $count surviving span(s) after coherence check" >&2
+[[ "$count" -gt 0 ]] || die "no spans survived verify-coherence"
 
-# 6. per-span render --------------------------------------------------------
+# 8. per-span render --------------------------------------------------------
 saved=0
 for ((i = 0; i < count; i++)); do
   idx="$(printf '%02d' "$((i + 1))")"
@@ -81,13 +87,26 @@ print(s["t0"], s["t1"])' "$segments" "$i")
     python3 "$root/rebase.py" "$transcript" "$speaker" "$t0" "$t1" "$ctx" "$cspk" "$clip"
 
     vert="$dir/clip_$idx.vert.mp4"
-    bash "$(skill reframe-vertical)" "$clip" "$cspk" "$vert" >/dev/null
+    bash "$(skill fit-vertical)" "$clip" "$vert" >/dev/null
+
+    # chunk-captions: clip transcript -> phrase chunks (kills the rolling scroll)
+    chunks="$dir/clip_$idx.chunks.json"
+    bash "$(skill chunk-captions)" "$ctx" "$chunks" >/dev/null
 
     sub="$dir/clip_$idx.sub.mp4"
-    bash "$(skill burn-subtitles)" "$vert" "$ctx" "$sub" >/dev/null
+    bash "$(skill burn-subtitles)" "$vert" "$chunks" "$sub" chunks >/dev/null
+
+    # generate-title: per-clip third-person ALL-CAPS hook title
+    title_file="$dir/clip_$idx.title.txt"
+    bash "$(skill generate-title)" "$ctx" "$ingest_json" "$title_file" >/dev/null
+    title="$(cat "$title_file")"
+    echo "    title: $title" >&2
+
+    titled="$dir/clip_$idx.titled.mp4"
+    bash "$(skill title-transition)" "$sub" "$title" "$titled" >/dev/null
 
     final="$dir/clip_$idx.final.mp4"
-    bash "$(skill loudnorm)" "$sub" "$final"
+    bash "$(skill loudnorm)" "$titled" "$final"
 
     verdict="$(bash "$(skill qc-clip)" "$final")"
     ok="$(printf '%s' "$verdict" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pass"])')"

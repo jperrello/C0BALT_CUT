@@ -43,8 +43,14 @@ title re-renders.
 - **Slide out** (last `min(0.45, dur/3)`s): card exits off the right edge,
   ease-in cubic.
 
-The card is a dark rounded panel with an accent-yellow border and white bold
-text (black stroke) — the same accent (`255,214,51`) as `burn-subtitles`.
+The card is rendered as bare text (no panel, no border) in Impact, ALL CAPS,
+white with one cyan-accented keyword (`#00E5FF`) and a thick black stroke for
+legibility — the exact same visual language as `burn-subtitles`' caption
+preset so the title and the captions read as one brand.
+
+Title text is supplied by the `generate-title` skill (third-person, ≤7 words,
+ALL CAPS). `pick-segments` no longer emits a `title_suggestion` — call
+`generate-title` per clip and pass its output here.
 
 ## How
 

@@ -7,18 +7,20 @@ set -euo pipefail
 input="${1:-}"
 transcript="${2:-}"
 out="${3:-}"
-style="${4:-word-karaoke}"
+style="${4:-chunks}"
 font_size="${5:-72}"
 
 if [[ -z "$input" || -z "$transcript" || -z "$out" ]]; then
-  echo "usage: burn-subtitles.sh <input> <transcript.json> <out> [style:line|word-karaoke|selective] [font_size]" >&2
+  echo "usage: burn-subtitles.sh <input> <transcript_or_chunks.json> <out> [style:chunks|line|word-karaoke|selective] [font_size]" >&2
+  echo "  style=chunks (default): second arg is chunks.json from chunk-captions" >&2
+  echo "  other styles: second arg is transcript.json" >&2
   exit 2
 fi
 for f in "$input" "$transcript"; do
   [[ -f "$f" ]] || { echo "burn-subtitles: not found: $f" >&2; exit 2; }
 done
 case "$style" in
-  line|word-karaoke|selective) ;;
+  chunks|line|word-karaoke|selective) ;;
   *) echo "burn-subtitles: unknown style: $style" >&2; exit 2 ;;
 esac
 
