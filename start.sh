@@ -25,6 +25,11 @@
 
 set -uo pipefail
 
+# This orchestrator may be invoked from inside a Claude Code session; child
+# `claude -p` invocations (in panes or fallback) refuse to nest unless these
+# are unset. Strip them at the very top so every child inherits a clean env.
+unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT
+
 arg="${1:-}"
 n="${SHORTS_N:-5}"
 dmin="${SHORTS_DMIN:-20}"
@@ -149,7 +154,8 @@ seg_final="$dir/segments.json"
 # srcprep — bash ingest + transcribe (skip if cached)
 if [[ -f "$src" && -f "$tx" ]]; then
   log "[phase 1] srcprep cached (source.mp4 + transcript.json present)"
-  echo 0 > "$SHORTS_PANE_DIR/$sp/srcprep/exit" 2>/dev/null || { mkdir -p "$SHORTS_PANE_DIR/$sp/srcprep"; echo 0 > "$SHORTS_PANE_DIR/$sp/srcprep/exit"; }
+  mkdir -p "$SHORTS_PANE_DIR/$sp/srcprep"
+  echo 0 > "$SHORTS_PANE_DIR/$sp/srcprep/exit"
   touch "$SHORTS_PANE_DIR/$sp/srcprep/done"
 else
   if [[ -n "$url" ]]; then

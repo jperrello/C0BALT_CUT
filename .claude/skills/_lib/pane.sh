@@ -57,7 +57,10 @@ run_claude_step() {
   # The pane runs a fresh `claude -p` per round. This is cheaper than
   # maintaining a long-lived REPL via send-keys (which is fragile) and
   # naturally gives a clean context per step.
-  local cmd="cat '$dir/in.txt' | claude -p --output-format text > '$dir/out.txt' 2>>'$dir/log' ; sync ; touch '$dir/out.done'"
+  # unset CLAUDECODE/CLAUDE_CODE_ENTRYPOINT — `claude -p` refuses to nest
+  # inside another Claude Code session and this orchestrator is itself
+  # commonly invoked from one.
+  local cmd="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; cat '$dir/in.txt' | claude -p --output-format text > '$dir/out.txt' 2>>'$dir/log' ; sync ; touch '$dir/out.done'"
   tmux send-keys -t "$SHORTS_PANE" "$cmd" Enter
 
   local timeout="${PANE_TIMEOUT:-1800}"
