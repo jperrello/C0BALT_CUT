@@ -2,6 +2,10 @@
 # chunk-captions: clip transcript -> phrase-sized caption chunks (Claude-driven)
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/pane.sh"
+parse_pane_flag "$@"
+set -- "${SHORTS_REST[@]+"${SHORTS_REST[@]}"}"
+
 transcript="${1:-}"
 out="${2:-}"
 
@@ -36,8 +40,8 @@ prompt="$tmp/prompt.txt"
 python3 "$here/build_prompt.py" "$transcript" > "$prompt"
 
 reply="$tmp/reply.txt"
-if ! claude -p --output-format text < "$prompt" > "$reply" 2>"$tmp/claude.err"; then
-  echo "chunk-captions: claude -p failed; using fallback" >&2
+if ! run_claude_step chunk-captions "$prompt" "$reply" 2>"$tmp/claude.err"; then
+  echo "chunk-captions: claude step failed; using fallback" >&2
   cat "$tmp/claude.err" >&2
   : > "$reply"
 fi

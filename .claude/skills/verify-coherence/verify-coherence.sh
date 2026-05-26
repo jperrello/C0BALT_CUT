@@ -2,6 +2,10 @@
 # verify-coherence: post-pick gate that tightens incoherent spans.
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/pane.sh"
+parse_pane_flag "$@"
+set -- "${SHORTS_REST[@]+"${SHORTS_REST[@]}"}"
+
 segments="${1:-}"
 transcript="${2:-}"
 out="${3:-}"
@@ -41,8 +45,8 @@ prompt="$tmp/prompt.txt"
 python3 "$here/build_prompt.py" "$segments" "$transcript" > "$prompt"
 
 reply="$tmp/reply.txt"
-claude -p --output-format text < "$prompt" > "$reply" 2>"$tmp/claude.err" || {
-  echo "verify-coherence: claude -p failed" >&2
+run_claude_step verify-coherence "$prompt" "$reply" 2>"$tmp/claude.err" || {
+  echo "verify-coherence: claude step failed" >&2
   cat "$tmp/claude.err" >&2
   exit 1
 }
