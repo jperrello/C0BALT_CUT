@@ -1,0 +1,40 @@
+---
+name: start
+description: Run the shorts pipeline across long-lived tmux panes. /start <youtube-url> for a fresh run, or /start <source-id> to reuse an already-ingested video. Each phase shows its progress in the foreground; tmux attach -t <pane> to inspect any phase live.
+allowed-tools: Bash
+user-invocable: true
+---
+
+# /start
+
+Top-level entry point for the shorts pipeline. Fans the work across
+named tmux panes so you can `tmux attach -t shorts-<id>-<phase>-<n>` to
+watch any single Claude reasoning step (or ffmpeg run) live.
+
+## Invoke
+
+```
+/start <youtube-url>      # fresh ingest + full pipeline
+/start <source-id>        # reuse already-ingested work/<id>/
+```
+
+The orchestrator preflights the mcptube MCP server at
+`http://127.0.0.1:9093/mcp` (override with `$MCPTUBE_URL`) and aborts
+with instructions if it's unreachable. Set `SHORTS_N`, `SHORTS_DMIN`,
+`SHORTS_DMAX` to tune span count / duration.
+
+## Pane layout (per spec §1)
+
+- `shorts-<id>-srcprep` — bash: ingest + transcribe
+- `shorts-<id>-analysis` — Claude: mcptube add, then topics → picks → coherence
+- `shorts-<id>-editor-NN` — Claude: bookend-trim, trim-filler, verify-bookends (with bash skills interleaved)
+- `shorts-<id>-captions-NN` — Claude: chunk-captions, generate-title (bash: burn-subtitles, title-transition, loudnorm)
+- `shorts-<id>-broll-NN` — Claude: broll-pick
+- `shorts-<id>-completion-NN` — bash: broll-composite, like-subscribe-overlay, bg-music, qc, save-local
+
+Panes are torn down on run completion. `shorts.sh` remains as a
+non-interactive fallback.
+
+## Run
+
+!`./start.sh "$ARGUMENTS"`

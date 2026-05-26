@@ -2,6 +2,10 @@
 # pick-segments: transcript + audio energy -> N clip-worthy spans (Claude-driven)
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/pane.sh"
+parse_pane_flag "$@"
+set -- "${SHORTS_REST[@]+"${SHORTS_REST[@]}"}"
+
 transcript="${1:-}"
 out="${2:-}"
 n="${3:-5}"
@@ -58,8 +62,8 @@ prompt_file="$tmp/prompt.txt"
 python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" "${topics:-}" > "$prompt_file"
 
 reply="$tmp/reply.txt"
-claude -p --output-format text < "$prompt_file" > "$reply" 2>"$tmp/claude.err" || {
-  echo "pick-segments: claude -p failed" >&2
+run_claude_step pick-segments "$prompt_file" "$reply" 2>"$tmp/claude.err" || {
+  echo "pick-segments: claude step failed" >&2
   cat "$tmp/claude.err" >&2
   exit 1
 }
