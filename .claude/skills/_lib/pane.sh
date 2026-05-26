@@ -11,9 +11,14 @@
 #       $SHORTS_PANE_DIR/<step>/in.txt, send a shell command into the pane
 #       that runs `claude -p`, and wait on out.done before reading out.txt.
 #
-# Sentinel protocol (matches May26-spec §1):
-#   pane writes out.txt fully, syncs, then touches out.done.
-#   orchestrator (us) only reads out.txt after seeing out.done.
+# Read protocol (revised after the original sentinel approach raced — see
+# bd shorts-tnd):
+#   pane writes out.txt; orchestrator polls it on a tick. A round is
+#   "settled" when out.txt is non-empty and its size is unchanged across
+#   two consecutive polls. The orchestrator never reads the instant a
+#   sentinel appears, so any half-written or stale state naturally falls
+#   out across the polling interval — the same pattern the overseer uses
+#   when checking crew work.
 
 # usage: parse_pane_flag "$@" ; set -- "${SHORTS_REST[@]}"
 # Strips `--pane <name>` from $@, exports SHORTS_PANE, and returns the
@@ -51,7 +56,7 @@ run_claude_step() {
   local base="${SHORTS_PANE_DIR:-/tmp/shorts_pane}/${SHORTS_PANE}"
   local dir="$base/$step"
   mkdir -p "$dir"
-  rm -f "$dir/out.done" "$dir/out.txt"
+  rm -f "$dir/out.txt" "$dir/out.done"
   cp "$prompt" "$dir/in.txt"
 
   # The pane runs a fresh `claude -p` per round. This is cheaper than
@@ -60,16 +65,27 @@ run_claude_step() {
   # unset CLAUDECODE/CLAUDE_CODE_ENTRYPOINT — `claude -p` refuses to nest
   # inside another Claude Code session and this orchestrator is itself
   # commonly invoked from one.
-  local cmd="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; cat '$dir/in.txt' | claude -p --output-format text > '$dir/out.txt' 2>>'$dir/log' ; sync ; touch '$dir/out.done'"
+  local cmd="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; cat '$dir/in.txt' | claude -p --output-format text > '$dir/out.txt' 2>>'$dir/log'"
   tmux send-keys -t "$SHORTS_PANE" "$cmd" Enter
 
+  # Tick-based settle: out.txt is considered ready when it is non-empty
+  # AND its size has not changed across one tick. The sentinel approach
+  # (touch out.done at end) raced; this approach naturally waits for
+  # whatever the pane finishes writing.
+  local tick="${PANE_TICK:-6}"
   local timeout="${PANE_TIMEOUT:-1800}"
-  local waited=0
-  while [[ ! -f "$dir/out.done" ]]; do
-    sleep 2
-    waited=$((waited + 2))
+  local waited=0 prev=-1 cur=0
+  while true; do
+    sleep "$tick"
+    waited=$((waited + tick))
+    cur=$(wc -c < "$dir/out.txt" 2>/dev/null | tr -d ' ')
+    [[ -z "$cur" ]] && cur=0
+    if (( cur > 0 && cur == prev )); then
+      break
+    fi
+    prev=$cur
     if (( waited >= timeout )); then
-      echo "pane.sh: timeout (${timeout}s) waiting on $SHORTS_PANE/$step" >&2
+      echo "pane.sh: timeout (${timeout}s) waiting on $SHORTS_PANE/$step (last size=$cur)" >&2
       return 1
     fi
   done
