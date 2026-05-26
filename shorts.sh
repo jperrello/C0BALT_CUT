@@ -23,6 +23,8 @@ step() { echo; echo ">>> $*" >&2; }
 die() { echo "shorts: FAILED — $*" >&2; exit 1; }
 
 # 1. ingest -----------------------------------------------------------------
+skipped=0
+
 step "ingest $url"
 meta="$(bash "$(skill ingest)" "$url")" || die "ingest"
 id="$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
@@ -36,17 +38,7 @@ step "transcribe"
 transcript="$dir/transcript.json"
 bash "$(skill transcribe)" "$src" "$transcript" >/dev/null || die "transcribe"
 
-# 3. detect-faces -----------------------------------------------------------
-step "detect-faces"
-faces="$dir/faces.json"
-bash "$(skill detect-faces)" "$src" "$faces" >/dev/null || die "detect-faces"
-
-# 4. pick-speaker (whole video) --------------------------------------------
-step "pick-speaker"
-speaker="$dir/speaker.json"
-bash "$(skill pick-speaker)" "$transcript" "$faces" "$src" "$speaker" >/dev/null || die "pick-speaker"
-
-# 5. segment-topics ---------------------------------------------------------
+# 3. segment-topics ---------------------------------------------------------
 step "segment-topics"
 topics="$dir/topics.json"
 bash "$(skill segment-topics)" "$transcript" "$topics" >/dev/null || die "segment-topics"
@@ -58,8 +50,13 @@ bash "$(skill pick-segments)" "$transcript" "$segments_raw" "$n" "$dmin" "$dmax"
 
 # 7. verify-coherence (tightens incoherent spans) --------------------------
 step "verify-coherence"
+segments_coh="$dir/segments.coherent.json"
+bash "$(skill verify-coherence)" "$segments_raw" "$transcript" "$segments_coh" "$dmin" >/dev/null || die "verify-coherence"
+
+# 7b. bookend-trim (snap to sentence boundaries) ---------------------------
+step "bookend-trim"
 segments="$dir/segments.json"
-bash "$(skill verify-coherence)" "$segments_raw" "$transcript" "$segments" "$dmin" >/dev/null || die "verify-coherence"
+bash "$(skill bookend-trim)" "$segments_coh" "$transcript" "$segments" 6.0 "$dmin" >/dev/null || die "bookend-trim"
 
 count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["shorts"]))' "$segments")"
 echo "shorts: $count surviving span(s) after coherence check" >&2
@@ -81,10 +78,45 @@ print(s["t0"], s["t1"])' "$segments" "$i")
     clip="$dir/clip_$idx.mp4"
     bash "$(skill cut-clip)" "$src" "$t0" "$t1" "$clip" true
 
-    # rebase transcript + speaker track into clip-local time
+    # rebase transcript into clip-local time
     ctx="$dir/clip_$idx.transcript.json"
-    cspk="$dir/clip_$idx.speaker.json"
-    python3 "$root/rebase.py" "$transcript" "$speaker" "$t0" "$t1" "$ctx" "$cspk" "$clip"
+    python3 "$root/rebase.py" "$transcript" "$t0" "$t1" "$ctx" "$clip"
+
+    # trim-filler: Claude marks filler / trail-offs / digressive asides for removal
+    keeps="$dir/clip_$idx.keeps.json"
+    trim_tx="$dir/clip_$idx.trim.transcript.json"
+    bash "$(skill trim-filler)" "$ctx" "$keeps" "$trim_tx" >/dev/null
+    trimmed="$dir/clip_$idx.trim.mp4"
+    bash "$(skill cut-filler)" "$clip" "$keeps" "$trimmed" >/dev/null
+    clip="$trimmed"
+    ctx="$trim_tx"
+
+    # tighten-pace: collapse inter-word silences > gap_max (default 0.18s)
+    tight="$dir/clip_$idx.tight.mp4"
+    tight_tx="$dir/clip_$idx.tight.transcript.json"
+    bash "$(skill tighten-pace)" "$clip" "$ctx" "$tight" "$tight_tx" >/dev/null
+    clip="$tight"
+    ctx="$tight_tx"
+
+    # verify-bookends: vision check on first/last 1.5s; may issue inward second cut
+    vb_decision="$dir/clip_$idx.verify.json"
+    bash "$(skill verify-bookends)" "$clip" "$ctx" "$vb_decision" >/dev/null || true
+    vb_action="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("action","keep"))' "$vb_decision" 2>/dev/null || echo keep)"
+    echo "    verify-bookends: $vb_action" >&2
+    if [[ "$vb_action" == "drop" ]]; then
+      echo "short $idx: DROP per verify-bookends" >&2
+      exit 7
+    fi
+    if [[ "$vb_action" == "trim" ]]; then
+      vb_t0="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["t0"])' "$vb_decision")"
+      vb_t1="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["t1"])' "$vb_decision")"
+      vbclip="$dir/clip_$idx.verified.mp4"
+      bash "$(skill cut-clip)" "$clip" "$vb_t0" "$vb_t1" "$vbclip" true >/dev/null
+      vb_tx="$dir/clip_$idx.verified.transcript.json"
+      python3 "$root/rebase.py" "$ctx" "$vb_t0" "$vb_t1" "$vb_tx" "$vbclip"
+      clip="$vbclip"
+      ctx="$vb_tx"
+    fi
 
     vert="$dir/clip_$idx.vert.mp4"
     bash "$(skill fit-vertical)" "$clip" "$vert" >/dev/null
@@ -105,8 +137,28 @@ print(s["t0"], s["t1"])' "$segments" "$i")
     titled="$dir/clip_$idx.titled.mp4"
     bash "$(skill title-transition)" "$sub" "$title" "$titled" >/dev/null
 
+    leveled="$dir/clip_$idx.leveled.mp4"
+    bash "$(skill loudnorm)" "$titled" "$leveled"
+
+    # broll split (May26 §2): broll-pick (Claude+Pexels+vision verify) -> broll-composite (pure ffmpeg)
+    broll_plan="$dir/clip_$idx.broll_plan.json"
+    bash "$(skill broll-pick)" "$leveled" "$ctx" "$broll_plan" "$ingest_json" "$chunks" >/dev/null || echo '{"picks": []}' > "$broll_plan"
+    brolled="$dir/clip_$idx.brolled.mp4"
+    bash "$(skill broll-composite)" "$leveled" "$broll_plan" "$brolled" >/dev/null || cp "$leveled" "$brolled"
+
+    # like-subscribe-overlay: animated CTA in the last 4s
+    ctaed="$dir/clip_$idx.ctaed.mp4"
+    bash "$(skill like-subscribe-overlay)" "$brolled" "$ctaed" 4.0 >/dev/null || cp "$brolled" "$ctaed"
+
+    # pick-mood: Claude reads clip transcript and picks a ./songs/<mood>/ folder
+    mood_file="$dir/clip_$idx.mood.txt"
+    bash "$(skill pick-mood)" "$ctx" "$mood_file" >/dev/null || echo "ALL SONGS" > "$mood_file"
+    mood="$(cat "$mood_file")"
+    echo "    mood: $mood" >&2
+
+    # bg-music: trendy looped bed at vol=0.12 (~-18dB) under broadcast-leveled speech
     final="$dir/clip_$idx.final.mp4"
-    bash "$(skill loudnorm)" "$titled" "$final"
+    bash "$(skill bg-music)" "$ctaed" "$final" "$mood" >/dev/null || cp "$ctaed" "$final"
 
     verdict="$(bash "$(skill qc-clip)" "$final")"
     ok="$(printf '%s' "$verdict" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pass"])')"
@@ -117,8 +169,17 @@ print(s["t0"], s["t1"])' "$segments" "$i")
     fi
 
     bash "$(skill save-local)" "$final" "$src" "short_$idx.mp4" >/dev/null
-  ) && saved=$((saved + 1)) || echo "short $idx: skipped" >&2
+  )
+  rc=$?
+  if [[ $rc -eq 0 ]]; then
+    saved=$((saved + 1))
+  elif [[ $rc -eq 7 ]]; then
+    skipped=$((skipped + 1))
+    echo "short $idx: skipped (verify-bookends drop)" >&2
+  else
+    echo "short $idx: skipped (rc=$rc)" >&2
+  fi
 done
 
 echo
-echo "shorts: done — $saved/$count short(s) saved under ./output/" >&2
+echo "shorts: done — $saved/$count short(s) saved under ./output/ ($skipped dropped by verify-bookends)" >&2
