@@ -1,17 +1,29 @@
 ---
 name: verify-bookends
-description: Post-edit verification of a short's opening and closing 1.5s. Claude sees a 3-frame strip from each end plus the trimmed transcript text around each end and returns either {action:keep}, {action:trim,t0,t1} (inward-only), or {action:drop,reason}. Runs after tighten-pace, before fit-vertical. Inward-only — bookend-trim's outward pass already had its chance. Drops the span if cleaning the bookends would require removing more than 2s.
+description: Post-edit verification of a short's opening and closing 1.5s. Claude sees a 3-frame strip from each end plus the trimmed transcript text around each end and returns {action:keep}, {action:trim,t0,t1} (inward-only), or {action:drop,reason}. Checks three things — (1) cleanliness (partial words, breath cutoffs, off-shot frames); (2) opening-hook strength (snap t0 inward to a stronger hook line if the first 3s is pure setup); (3) payoff landing (snap t1 to ~80ms past the payoff word when the tail trails into filler). Runs after tighten-pace, before fit-vertical. Inward-only — bookend-trim's outward pass already had its chance. Drops the span only on cleanliness failures requiring >2s of trim — never on hook-weakness alone.
 allowed-tools: Bash
 user-invocable: true
 ---
 
 # verify-bookends
 
-Last-line defense before a short is committed to fit-vertical: did the
-opening word arrive cleanly, and did the closing word land cleanly? If
-either bookend has a breath cutoff, a partial word, a co-speaker
-interjection, or a stray frame of the wrong shot, propose an INWARD-ONLY
-trim that snaps to the next/previous word boundary inside the clip.
+Last-line defense before a short is committed to fit-vertical. Checks
+three things in one Claude call:
+
+1. **Cleanliness** — partial words, breath cutoffs, co-speaker
+   interjections, off-shot frames at either end.
+2. **Opening-hook strength (VVSA gate)** — the first ~3s is where a
+   scrolling stranger swipes away. If the opening is pure setup /
+   throat-clearing and a stronger hook line exists within the first 3s,
+   snap t0 inward to that line. Hook-weakness alone is never a drop —
+   only an inward-trim suggestion.
+3. **Payoff landing** — if the tail contains a clear payoff word
+   followed by trailing filler ("yeah", "so anyway") or silence, snap
+   t1 to ~80ms past the payoff word rather than the sentence boundary.
+   Dead air after the payoff costs retention.
+
+Output remains a single `keep`/`trim`/`drop` decision — same I/O
+contract, same caller logic in `shorts.sh`.
 
 ## Invoke
 

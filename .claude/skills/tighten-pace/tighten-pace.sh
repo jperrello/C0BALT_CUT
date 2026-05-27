@@ -63,11 +63,20 @@ print("+".join(f"between(t,{a:.4f},{b:.4f})" for a,b in keeps))
 echo "tighten-pace: $n_keeps keep range(s), ~${removed}s collapsed (gap_max=$gap_max sentence_beat=$sentence_beat collapse_to=$collapse_to)" >&2
 
 staging="$tmp/$(basename "$out_clip")"
+
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/encode.sh"
+venc=(); vdec=(); vthr=()
+while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args low)
+while IFS= read -r -d '' a; do vdec+=("$a"); done < <(vt_decode_args)
+while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
+
 ffmpeg -y -hide_banner -loglevel error \
-  -i "$in_clip" \
+  ${vdec[@]+"${vdec[@]}"} -i "$in_clip" \
   -vf "select='${expr}',setpts=N/FRAME_RATE/TB" \
   -af "aselect='${expr}',asetpts=N/SR/TB" \
-  -c:v libx264 -preset veryfast -crf 18 -c:a aac -b:a 192k -movflags +faststart \
+  "${venc[@]}" -c:a aac -b:a 192k \
+  "${vthr[@]}" -movflags +faststart \
   "$staging"
 
 mv "$staging" "$out_clip"

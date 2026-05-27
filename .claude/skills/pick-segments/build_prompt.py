@@ -77,7 +77,17 @@ Audio energy (per ~1s of source, bucketed to ~60 bins, ▁ low → █ high):
 Transcript (timestamped lines, seconds):
 {transcript_block}
 {topic_rules}
-Pick {n} non-overlapping spans, each {dmin:.0f}-{dmax:.0f} seconds long, that would work as standalone shorts. Favor self-contained moments: a punchline, a reaction, a complete thought, a strong reveal. Avoid mid-sentence cuts.
+Pick {n} non-overlapping spans, each {dmin:.0f}-{dmax:.0f} seconds long, that would work as standalone shorts. Avoid mid-sentence cuts.
+
+SCROLL-STOP HOOK (highest priority — shorts that don't grab in the first 1-2s are dead):
+The OPENING WORDS of each span are what a viewer sees first. Score each pick on:
+  - hook_score (0-10): does the first 1-2s plant a curiosity question OR land a striking visual/factual claim? Reward concrete nouns, numbers, named subjects, surprising statements, direct questions. Punish vague setup.
+  - structure_score (0-10): does the span have hook → foreshadow → payoff? Is there but/therefore causality between beats (not just "and then")? Does it open a curiosity loop that resolves by the end?
+  - overall_score (0-10): your holistic rank — would you stop scrolling?
+
+HARD REJECT — do NOT pick spans whose first transcript word is filler:
+  so, and, but, um, uh, like, well, okay, ok, basically, actually, anyway, you know, I mean, I think, I guess, kind of, sort of
+Trim the span start forward to a stronger opening word if needed (still respect {dmin:.0f}s minimum).
 
 Reply with ONLY a JSON object (no prose, no code fences):
-{{"shorts": [{{"t0": <float>, "t1": <float>, "rationale": "<short reason>", "title_suggestion": "<short title>"}}]}}""")
+{{"shorts": [{{"t0": <float>, "t1": <float>, "rationale": "<short reason>", "title_suggestion": "<short title>", "hook_score": <0-10>, "structure_score": <0-10>, "overall_score": <0-10>}}]}}""")

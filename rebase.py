@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# rebase: slice the whole-video transcript + speaker track down to one clip's
-# [t0, t1] window and shift timestamps to clip-local time (starting at 0).
+# rebase: slice the whole-video transcript down to one clip's [t0, t1] window
+# and shift timestamps to clip-local time (starting at 0).
 # Driver glue for shorts.sh — not an atomic skill.
 import json, sys
 
-transcript, speaker, t0, t1, out_tx, out_spk, clip = sys.argv[1:8]
+transcript, t0, t1, out_tx, clip = sys.argv[1:6]
 t0, t1 = float(t0), float(t1)
 dur = t1 - t0
 
@@ -27,16 +27,4 @@ json.dump(
     open(out_tx, "w"), indent=2,
 )
 
-spk = json.load(open(speaker))
-spans = []
-for s in spk.get("spans", []):
-    if s["t1"] > t0 and s["t0"] < t1:
-        spans.append({
-            "t0": clamp(s["t0"] - t0),
-            "t1": clamp(s["t1"] - t0),
-            "speaker_box": s.get("speaker_box"),
-            "confidence": s.get("confidence", "low"),
-        })
-json.dump({"source": clip, "spans": spans}, open(out_spk, "w"), indent=2)
-
-print(f"rebase: {len(words)} words, {len(spans)} speaker spans", file=sys.stderr)
+print(f"rebase: {len(words)} words", file=sys.stderr)

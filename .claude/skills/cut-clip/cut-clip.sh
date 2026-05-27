@@ -35,11 +35,18 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 staging="$tmp/$(basename "$out")"
 
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/encode.sh"
+venc=(); vdec=(); vthr=()
+while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args low)
+while IFS= read -r -d '' a; do vdec+=("$a"); done < <(vt_decode_args)
+while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
+
 if [[ "$reencode" == "true" ]]; then
   ffmpeg -y -hide_banner -loglevel error \
-    -i "$input" -ss "$t0" -to "$t1" \
-    -c:v libx264 -preset veryfast -crf 18 -c:a aac \
-    -movflags +faststart \
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -ss "$t0" -to "$t1" \
+    "${venc[@]}" -c:a aac \
+    "${vthr[@]}" -movflags +faststart \
     "$staging"
 else
   ffmpeg -y -hide_banner -loglevel error \
