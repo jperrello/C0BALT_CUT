@@ -55,13 +55,21 @@ python3 "$here/burn_subtitles.py" "$transcript" "$seq" "$w" "$h" \
   "$fps" "$nframes" "$style" "$font_size" "$input"
 
 staging="$tmp/$(basename "$out")"
+
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/encode.sh"
+venc=(); vdec=(); vthr=()
+while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args mid)
+while IFS= read -r -d '' a; do vdec+=("$a"); done < <(vt_decode_args)
+while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
+
 ffmpeg -y -hide_banner -loglevel error \
-  -i "$input" \
+  ${vdec[@]+"${vdec[@]}"} -i "$input" \
   -framerate "$fps" -i "$seq/%06d.png" \
   -filter_complex "[0:v][1:v]overlay=format=auto:shortest=1[v]" \
   -map "[v]" -map 0:a? \
-  -c:v libx264 -preset veryfast -crf 18 -c:a copy \
-  -movflags +faststart "$staging"
+  "${venc[@]}" -c:a copy \
+  "${vthr[@]}" -movflags +faststart "$staging"
 
 mv "$staging" "$out"
 echo "burn-subtitles: wrote $out  ${w}x${h}  style=$style" >&2

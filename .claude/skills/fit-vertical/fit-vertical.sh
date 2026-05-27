@@ -44,13 +44,20 @@ filter="[0:v]split=2[bg][fg];\
 [fg]scale=${w}:${h}:force_original_aspect_ratio=decrease[fgs];\
 [bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
 
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/encode.sh"
+venc=(); vdec=(); vthr=()
+while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args low)
+while IFS= read -r -d '' a; do vdec+=("$a"); done < <(vt_decode_args)
+while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
+
 ffmpeg -y -hide_banner -loglevel error \
-  -i "$input" \
+  ${vdec[@]+"${vdec[@]}"} -i "$input" \
   -filter_complex "$filter" \
   -map "[v]" -map 0:a? \
-  -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+  "${venc[@]}" \
   -c:a copy \
-  -movflags +faststart \
+  "${vthr[@]}" -movflags +faststart \
   "$staging"
 
 mv "$staging" "$out"

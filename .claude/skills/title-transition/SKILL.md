@@ -1,6 +1,6 @@
 ---
 name: title-transition
-description: Overlay an animated title card on the opening of a short. A brief title slides in from the left, holds centered, then slides out the right with a synthesized whoosh. Use as a hook-grabbing intro after the clip is otherwise finished.
+description: Overlay an animated title card on the opening of a short. The title pops in at center with an overshoot scale, lands with a white flash + screen shake, holds, then scales back down to nothing. Use as a hook-grabbing intro after the clip is otherwise finished.
 allowed-tools: Bash
 user-invocable: true
 ---
@@ -8,8 +8,8 @@ user-invocable: true
 # title-transition
 
 Animated intro title card for a short. A brief title describing the clip flies
-in, holds, flies out — with a whoosh. Overlaid on the clip's opening seconds, so
-total duration is unchanged.
+in, holds, and flies out silently. Overlaid on the clip's opening seconds, so
+total duration is unchanged and no title-card sound effect is added.
 
 ## Invoke
 
@@ -37,12 +37,26 @@ title re-renders.
 
 ## Animation
 
-- **Slide in** (first `min(0.45, dur/3)`s): card enters from off the left edge,
-  ease-out cubic, settles centered.
-- **Hold** (the middle): card sits centered, vertically mid-frame.
-- **Slide out** (last `min(0.45, dur/3)`s): card exits off the right edge,
-  ease-in cubic.
+- **Pop in** (first `min(0.45, dur/3)`s): card scales up at center — from 0.3×
+  → ~1.07× → 1.0× via a **back-out (Penner) ease** on the scale factor.
+  Overshoots by ~7% on the landing frame then settles. Reads as the title
+  punching into place from the center of the frame (no side travel).
+- **Hold** (the middle): card sits at full scale, centered horizontally and
+  vertically.
+- **Pop out** (last `min(0.45, dur/3)`s): card scales back down to 0 with an
+  ease-in (`p^1.5`).
 
+## Impact effects (locked to the landing frame, t = `fly`)
+
+The instant the title lands is the visual beat. Two visual effects fire together:
+
+1. **White flash** — 70ms brightness pulse on the underlying clip (`eq=brightness`
+   ramps 0.38 → 0). The title is overlaid AFTER the flash, so the text stays
+   crisp while the background brightens.
+2. **Screen shake** — 150ms damped sinusoid: ±9px horizontal, ±5px vertical,
+   applied via a `pad`+`crop` window on the source video. Decays to zero by the
+   end of the window. The title is overlaid AFTER the shake, so the text stays
+   readable while the background "kicks".
 The card is rendered as bare text (no panel, no border) in Impact, ALL CAPS,
 white with one cyan-accented keyword (`#00E5FF`) and a thick black stroke for
 legibility — the exact same visual language as `burn-subtitles`' caption
@@ -58,15 +72,10 @@ The local ffmpeg build has no `drawtext`/`libass`. So:
 
 1. `render_title.py` renders the title as one tight transparent PNG banner with
    PIL (Arial Bold, auto-sized, rounded panel).
-2. `make_sfx.py` synthesizes the sound bed as a stdlib-`wave` WAV — a rising
-   whoosh (one-pole-lowpass-filtered noise, brightening sweep) under the
-   slide-in, a soft low impact at the landing, a falling whoosh under the
-   slide-out. Whooshes pan left→right to track the motion.
-3. `title-transition.sh` overlays the PNG with an `overlay` filter whose `x` is a
-   time-varying eased expression, `enable`d only for `[0, dur]`, and mixes the
-   SFX over the source audio (`amix … normalize=0` + `alimiter`). If the source
-   has no audio stream, the SFX becomes the audio track.
+2. `title-transition.sh` overlays the PNG with an `overlay` filter whose scale is
+   time-varying, `enable`d only for `[0, dur]`, and preserves the source audio
+   unchanged apart from AAC re-encoding when an audio stream exists.
 
 ## Status
 
-Implemented — `title-transition.sh`, `render_title.py`, `make_sfx.py`.
+Implemented — `title-transition.sh`, `render_title.py`.

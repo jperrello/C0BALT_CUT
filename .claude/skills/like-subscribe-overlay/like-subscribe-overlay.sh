@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# like-subscribe-overlay: overlay a JS-rendered like/subscribe button animation
+# (assets/cta.mov — ProRes 4444 with alpha, built from cta.html by build-cta.sh)
+# on the last `dur` seconds of a finished short. The asset is time-stretched
+# (setpts) to fit dur and pinned to the lower third. Bell SFX layered under
+# the click.
+set -euo pipefail
+
+input="${1:-}"
+out="${2:-}"
+dur="${3:-4.0}"
+
+if [[ -z "$input" || -z "$out" ]]; then
+  echo "usage: like-subscribe-overlay.sh <input> <out> [dur=4.0]" >&2
+  exit 2
+fi
+[[ -f "$input" ]] || { echo "like-subscribe-overlay: input not found: $input" >&2; exit 2; }
+
+here="$(cd "$(dirname "$0")" && pwd)"
+asset="$here/assets/cta.mov"
+if [[ ! -f "$asset" ]]; then
+  echo "like-subscribe-overlay: missing $asset — building..." >&2
+  bash "$here/build-cta.sh" >&2 || {
+    echo "like-subscribe-overlay: build-cta.sh failed" >&2; exit 1; }
+fi
+
+meta="$out.lsmeta"
+sig="$dur|mov-v2-bottom-third-fullwidth"
+
+if [[ -f "$out" && -f "$meta" ]]; then
+  o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
+  i="$(stat -f %m "$input" 2>/dev/null || stat -c %Y "$input")"
+  a="$(stat -f %m "$asset" 2>/dev/null || stat -c %Y "$asset")"
+  newest_dep="$i"
+  [[ "$a" -gt "$newest_dep" ]] && newest_dep="$a"
+  if [[ "$o" -ge "$newest_dep" && "$(cat "$meta")" == "$sig" ]]; then
+    echo "like-subscribe-overlay: cache hit at $out" >&2
+    echo "$out"; exit 0
+  fi
+fi
+
+read -r w h < <(ffprobe -v error -select_streams v:0 \
+  -show_entries stream=width,height -of default=nw=1:nk=1 "$input" | paste -sd' ' -)
+[[ "$w" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ ]] || {
+  echo "like-subscribe-overlay: could not read video dimensions" >&2; exit 1; }
+
+vdur="$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
+  -of default=nw=1:nk=1 "$input")"
+[[ -n "$vdur" ]] || { echo "like-subscribe-overlay: could not read duration" >&2; exit 1; }
+
+adur="$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
+  -of default=nw=1:nk=1 "$asset")"
+[[ -n "$adur" ]] || adur="3.0"
+
+# clamp dur so it fits the clip
+dur="$(python3 -c "print(min(float('$dur'), max(1.5, float('$vdur') - 0.2)))")"
+start="$(python3 -c "print(max(0.0, float('$vdur') - float('$dur')))")"
+# time-stretch factor: multiply input PTS by this to fit dur seconds.
+# factor < 1 => asset plays faster than its native rate.
+sf="$(python3 -c "print(round(float('$dur') / float('$adur'), 6))")"
+# bell SFX fires near the gif's "click" moment — slightly after start.
+fly="$(python3 -c "print(round(min(0.35, float('$dur')/6), 4))")"
+
+has_audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_type \
+  -of default=nw=1:nk=1 "$input" 2>/dev/null || true)"
+
+mkdir -p "$(dirname "$out")"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+python3 "$here/make_sfx.py" "$tmp/sfx.wav" "$dur" "$fly"
+
+# overlay sizing: full clip width (native asset is 1080x320).
+# centered vertically in the bottom third (center at ~5/6 H).
+cta_w="$w"
+ov_y="(H*5/6)-(h/2)"
+
+# filter chain on the asset:
+#   - setpts: stretch to fit dur seconds AND offset to start = clip_dur - dur
+#   - scale: width=${cta_w}, height auto (preserves aspect)
+#   - format yuva: keep the prores alpha through to overlay
+asset_chain="setpts=PTS*${sf}+${start}/TB,scale=${cta_w}:-2,format=yuva420p"
+ov="[1:v]${asset_chain}[cta];[0:v][cta]overlay=x='(W-w)/2':y='${ov_y}':enable='between(t,${start},${start}+${dur})':format=auto[v]"
+
+staging="$tmp/$(basename "$out")"
+
+if [[ "$has_audio" == "audio" ]]; then
+  ffmpeg -y -hide_banner -loglevel error \
+    -i "$input" -i "$asset" -itsoffset "$start" -i "$tmp/sfx.wav" \
+    -filter_complex "${ov};[2:a]apad[sfx];[0:a][sfx]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]" \
+    -map "[v]" -map "[a]" \
+    -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+    -c:a aac -b:a 192k -movflags +faststart "$staging"
+else
+  ffmpeg -y -hide_banner -loglevel error \
+    -i "$input" -i "$asset" -itsoffset "$start" -i "$tmp/sfx.wav" \
+    -filter_complex "${ov};[2:a]apad[a]" \
+    -map "[v]" -map "[a]" -shortest \
+    -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+    -c:a aac -b:a 192k -movflags +faststart "$staging"
+fi
+
+mv "$staging" "$out"
+printf '%s' "$sig" > "$meta"
+echo "like-subscribe-overlay: wrote $out  dur=${dur}s  start=${start}s  asset=${adur}s @ speed ${sf}x" >&2
+echo "$out"

@@ -55,6 +55,50 @@ def rms_hot(path):
     return {i for i, x in enumerate(r) if (x - mean) / sd > 1.0}
 
 
+def rms_envelope(path, hop=0.02):
+    # mono 16k s16le -> RMS per hop-second window. Returns (hop_seconds, [rms]).
+    sr = 16000
+    win = max(1, int(sr * hop))
+    p = subprocess.Popen(
+        ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+         "-i", path, "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"],
+        stdout=subprocess.PIPE)
+    raw = p.stdout.read()
+    p.wait()
+    n = len(raw) // 2
+    if n == 0:
+        return hop, []
+    samples = struct.unpack(f"<{n}h", raw[: n * 2])
+    out = []
+    for i in range(0, n, win):
+        seg = samples[i:i + win]
+        if not seg:
+            break
+        out.append(math.sqrt(sum(x * x for x in seg) / len(seg)) / 32768.0)
+    return hop, out
+
+
+def onset_delta(env, hop, t0, search=0.30):
+    # Find first frame in [t0-search, t0+search] where RMS rises above a local
+    # threshold (mean of the search window). Return signed delta from t0.
+    if not env:
+        return 0.0
+    lo = max(0, int((t0 - search) / hop))
+    hi = min(len(env), int((t0 + search) / hop) + 1)
+    if hi - lo < 3:
+        return 0.0
+    window = env[lo:hi]
+    mean = sum(window) / len(window)
+    peak = max(window)
+    if peak <= mean * 1.2:
+        return 0.0  # no clear onset; leave alone
+    thresh = mean + (peak - mean) * 0.35
+    for i in range(lo, hi):
+        if env[i] >= thresh:
+            return i * hop - t0
+    return 0.0
+
+
 def wrap(tokens):
     space = font.getlength(" ")
     lines, cur, curw = [], [], 0.0
@@ -105,19 +149,35 @@ states = [() for _ in range(nframes)]
 if style == "chunks":
     # Phrase-chunk rendering. The whole chunk shows for its [t0, t1] window;
     # the currently-spoken word is cyan, the rest are white. Chunks hard-cut.
+    # Whisper word timestamps tend to lead the actual audio by 100-300ms, so
+    # we snap each chunk's display window to the first RMS onset near its t0.
     doc = json.load(open(src_data))
     chunks = doc.get("chunks", [])
+    hop, env = (0.02, []) if not video else rms_envelope(video, hop=0.02)
+    aligned = []
+    for c in chunks:
+        delta = onset_delta(env, hop, c["t0"]) if env else 0.0
+        aligned.append({
+            "t0": c["t0"] + delta,
+            "t1": c["t1"] + delta,
+            "words": [{"w": w["w"], "t0": w["t0"] + delta, "t1": w["t1"] + delta}
+                      for w in c["words"]],
+        })
+    print(f"burn-subtitles: chunk onset deltas "
+          f"min={min((a['t0']-c['t0'] for a,c in zip(aligned,chunks)), default=0):+.3f}s "
+          f"max={max((a['t0']-c['t0'] for a,c in zip(aligned,chunks)), default=0):+.3f}s",
+          file=sys.stderr)
     for fi in range(nframes):
         t = fi / fps
         active = None
-        for c in chunks:
+        for c in aligned:
             if c["t0"] <= t < c["t1"]:
                 active = c
                 break
         # also show chunk just after its end for a small tail so the last word
         # doesn't vanish the instant it's spoken
         if active is None:
-            for c in chunks:
+            for c in aligned:
                 if c["t1"] <= t <= c["t1"] + 0.25:
                     active = c
                     break

@@ -11,7 +11,7 @@ blurred zoomed copy of the same video.
 
 This is the simple counterpart to `reframe-vertical`, which requires a
 `pick-speaker` track. Reach for `fit-vertical` when the source has no single
-speaker to follow (b-roll, gameplay, slideshows, multi-person) or when you just
+speaker to follow (gameplay, slideshows, multi-person) or when you just
 want the original framing intact.
 
 ## Inputs

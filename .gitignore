@@ -14,6 +14,11 @@ venv/
 .logs/
 logs/
 state.json
+ralph.log
+.claude/crew/
+.claude/scheduled_tasks.lock
+.agents/
+node_modules/
 
 # Secrets
 .env
@@ -26,6 +31,8 @@ source/
 output/
 delivered/
 models/
+samples/
+songs/
 *.mp4
 *.mov
 *.mkv

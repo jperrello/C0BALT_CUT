@@ -3,6 +3,10 @@
 # are clean, and if not propose an inward-only trim.
 set -uo pipefail
 
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/pane.sh"
+parse_pane_flag "$@"
+set -- "${SHORTS_REST[@]+"${SHORTS_REST[@]}"}"
+
 in_clip="${1:-}"
 in_tx="${2:-}"
 out_json="${3:-}"
@@ -18,7 +22,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 meta="$out_json.vbmeta"
 in_mtime="$(stat -f %m "$in_clip" 2>/dev/null || stat -c %Y "$in_clip")"
 tx_mtime="$(stat -f %m "$in_tx"   2>/dev/null || stat -c %Y "$in_tx")"
-sig="$in_mtime|$tx_mtime|v1"
+sig="$in_mtime|$tx_mtime|v2"
 
 if [[ -f "$out_json" && -f "$meta" && "$(cat "$meta")" == "$sig" ]]; then
   echo "verify-bookends: cache hit at $out_json" >&2
@@ -123,14 +127,49 @@ Tail transcript: $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1
 Allowed head boundaries (snap t0 to one of these): $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read())["head_boundaries"])' "$tmp/snip.json")
 Allowed tail boundaries (snap t1 to one of these): $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read())["tail_boundaries"])' "$tmp/snip.json")
 
+You are checking THREE things:
+
+(1) CLEANLINESS — opening and closing must be free of partial syllables,
+    co-speaker interjections, breath cutoffs, and off-shot frames.
+
+(2) OPENING-HOOK STRENGTH — the first ~3 seconds is the swipe-away gate.
+    A scrolling stranger who knows nothing about the source must have a
+    reason to stay past second 3. The opening fails the hook test if:
+      - The first words are throat-clearing or pure setup ("so, basically,
+        what we wanted to talk about today is...")
+      - The opening makes no concrete claim, names no subject, asks no
+        specific question, and offers no immediate visual interest.
+    If the opening is weak BUT a stronger hook line exists within the
+    first ~3 seconds of the clip (a concrete claim, named subject, or
+    specific question), propose an inward t0 snap to that line's
+    starting word boundary. If no stronger line exists nearby, keep —
+    do NOT drop for hook-weakness alone; cleanliness drops still apply.
+
+(3) PAYOFF LANDING — if the tail window contains a clear PAYOFF (the
+    punchline word, the surprising number, the reveal that the rest of
+    the clip builds toward), the clip should END right after that
+    payoff word, not at the next sentence boundary. Dead air after the
+    payoff costs retention. If you see a payoff word in the tail
+    transcript followed by trailing "yeah", "so anyway", filler, or
+    silence, propose a t1 = (payoff word's end timestamp) + 0.08s,
+    snapped to the nearest allowed tail boundary at or just past it.
+    If the tail has no discrete payoff (continuous info), keep current
+    behavior — only trim for cleanliness.
+
 Decide:
-- "keep" — opening and closing both clean (full word, no partial syllable, no co-speaker interjection, no breath cutoff, no off-shot frame).
-- "trim" — propose INWARD-ONLY new t0 and/or t1 that snap to a word boundary INSIDE the clip. New t0 >= current t0 (0.0). New t1 <= current t1 (${dur}). Never extend outward — bookend-trim already had that chance.
+- "keep" — all three checks pass.
+- "trim" — propose INWARD-ONLY new t0 and/or t1 that snap to a word
+  boundary INSIDE the clip. New t0 >= 0. New t1 <= ${dur}. Never extend
+  outward — bookend-trim already had that chance.
+- "drop" — cleanliness failure that needs more than 2s of trim to fix.
 
 Hard rules:
 - INWARD ONLY. t0 must be >= 0; t1 must be <= ${dur}.
-- Removing more than 2.0 seconds total is forbidden — if cleaning the bookends needs more than that, return "drop".
-- Resulting duration (t1 - t0) must be >= 15 seconds, else return "keep" with reason.
+- Removing more than 2.0 seconds total is forbidden — if cleaning the
+  bookends needs more than that, return "drop". Hook-weakness alone is
+  never a drop reason.
+- Resulting duration (t1 - t0) must be >= 15 seconds, else return
+  "keep" with reason.
 
 Return ONLY one JSON object on a single line — no prose:
 
@@ -150,7 +189,7 @@ if [[ -f "$tmp/head.jpg" && -f "$tmp/tail.jpg" ]]; then
 fi
 
 reply_file="$tmp/reply.txt"
-claude -p --output-format text < "$prompt_file" > "$reply_file" 2>"$tmp/claude.err" || {
+run_claude_step verify-bookends "$prompt_file" "$reply_file" 2>"$tmp/claude.err" || {
   cat "$tmp/claude.err" >&2
   echo '{"action":"keep","reason":"claude failed"}' > "$out_json"
   printf '%s' "$sig" > "$meta"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # title-transition: overlay an animated title card on the first seconds of a clip.
-# the card slides in from the left, holds centered, slides out the right, with a
-# synthesized whoosh. text is a PIL PNG (no drawtext here) moved by an overlay
-# x-expression; the whoosh is a pure-python WAV mixed over the source audio.
+# the card pops in at center with a back-out (overshoot) scale, holds, then
+# scales back down to nothing. impact effects (flash + shake) fire on the
+# landing frame. text is a PIL PNG scaled per-frame by ffmpeg.
 set -euo pipefail
 
 input="${1:-}"
@@ -46,30 +46,53 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 python3 "$here/render_title.py" "$title" "$tmp/title.png" "$w" "$h" "$font"
-python3 "$here/make_sfx.py" "$tmp/sfx.wav" "$dur" "$fly"
 
-# ease-out cubic on the slide-in, ease-in cubic on the slide-out.
-x="if(lt(t,${fly}),-w+((W-w)/2+w)*(1-pow(1-t/${fly},3)),if(lt(t,${hold_end}),(W-w)/2,(W-w)/2+(W-(W-w)/2)*pow((t-${hold_end})/${fly},3)))"
-ov="[0:v][1:v]overlay=x='${x}':y='(H-h)/2':enable='between(t,0,${dur})':format=auto[v]"
+# scale factor S(t) — drives the per-frame scale on the title PNG.
+#   pop in (t < fly):    0.3 -> ~1.07 (overshoot) -> 1.0   via back-out Penner ease
+#   hold (t < hold_end): 1.0
+#   pop out (t < dur):   1.0 -> 0                          via ease-in (p^1.5)
+# back_out(p) = 1 + 2.70158*(p-1)^3 + 1.70158*(p-1)^2  (p = t/fly)
+scale_expr="if(lt(t,${fly}),0.3+0.7*(1+2.70158*pow(t/${fly}-1,3)+1.70158*pow(t/${fly}-1,2)),if(lt(t,${hold_end}),1,if(gt(1-(t-${hold_end})/${fly},0),pow(1-(t-${hold_end})/${fly},1.5),0)))"
+
+# impact effects locked to the landing frame (t=fly):
+#   - white flash: 70ms ramp-down via eq=brightness
+#   - screen shake: 150ms damped sinusoid in x and y, applied via pad+crop window
+# applied to the source video BEFORE the title is overlaid, so the title itself doesn't shake/flash.
+flash_end="$(python3 -c "print(round($fly + 0.07, 4))")"
+shake_end="$(python3 -c "print(round($fly + 0.15, 4))")"
+flash_expr="if(between(t,${fly},${flash_end}),0.38*(1-(t-${fly})/0.07),0)"
+shake_x="if(between(t,${fly},${shake_end}),9*sin(60*PI*(t-${fly}))*(1-(t-${fly})/0.15),0)"
+shake_y="if(between(t,${fly},${shake_end}),5*cos(80*PI*(t-${fly}))*(1-(t-${fly})/0.15),0)"
+
+# scale=eval=frame requires a multi-frame input. -loop 1 -t ${dur} on the PNG gives a bounded looped stream.
+# overlay is centered at every frame on the (now time-varying) scaled title dims.
+ov="[0:v]pad=iw+24:ih+24:12:12:color=black,crop=iw-24:ih-24:'12+${shake_x}':'12+${shake_y}',eq=brightness='${flash_expr}'[base];[1:v]scale=w='iw*(${scale_expr})':h='ih*(${scale_expr})':eval=frame:flags=bicubic[ttl];[base][ttl]overlay=x='(W-w)/2':y='(H-h)/2':enable='between(t,0,${dur})':format=auto[v]"
 
 staging="$tmp/$(basename "$out")"
 
-# the title PNG is a single still frame; overlay's repeatlast holds it for the
-# whole clip. (no -loop 1 — an infinite image input hangs ffmpeg here.)
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/encode.sh"
+venc=(); vdec=(); vthr=()
+while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args mid)
+while IFS= read -r -d '' a; do vdec+=("$a"); done < <(vt_decode_args)
+while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
+
+# the title PNG is looped as a bounded video stream (-loop 1 -t ${dur}) so
+# scale=eval=frame can re-evaluate the scale expression per frame.
 if [[ "$has_audio" == "audio" ]]; then
   ffmpeg -y -hide_banner -loglevel error \
-    -i "$input" -i "$tmp/title.png" -i "$tmp/sfx.wav" \
-    -filter_complex "${ov};[2:a]apad[sfx];[0:a][sfx]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]" \
-    -map "[v]" -map "[a]" \
-    -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
-    -c:a aac -b:a 192k -movflags +faststart "$staging"
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -loop 1 -t "$dur" -i "$tmp/title.png" \
+    -filter_complex "${ov}" \
+    -map "[v]" -map 0:a \
+    "${venc[@]}" \
+    -c:a aac -b:a 192k "${vthr[@]}" -movflags +faststart "$staging"
 else
   ffmpeg -y -hide_banner -loglevel error \
-    -i "$input" -i "$tmp/title.png" -i "$tmp/sfx.wav" \
-    -filter_complex "${ov};[2:a]apad[a]" \
-    -map "[v]" -map "[a]" -shortest \
-    -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
-    -c:a aac -b:a 192k -movflags +faststart "$staging"
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -loop 1 -t "$dur" -i "$tmp/title.png" \
+    -filter_complex "${ov}" \
+    -map "[v]" \
+    "${venc[@]}" \
+    "${vthr[@]}" -movflags +faststart "$staging"
 fi
 
 mv "$staging" "$out"
