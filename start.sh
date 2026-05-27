@@ -465,9 +465,16 @@ run_phase3_captions() {
     echo "title-transition" > "$dir/clip_${idx}.fail.captions"; return 1
   }
 
+  log "[phase 3 / span $idx / captions] source-credit"
+  local credited="$dir/clip_${idx}.credited.mp4"
+  bash "$(skill source-credit)" "$titled" "$ingest_json" "$credited" >/dev/null || {
+    log "[phase 3 / span $idx / captions] source-credit FAILED (continuing without credit)"
+    cp "$titled" "$credited"
+  }
+
   log "[phase 3 / span $idx / captions] loudnorm"
   local leveled="$dir/clip_${idx}.leveled.mp4"
-  bash "$(skill loudnorm)" "$titled" "$leveled" >/dev/null || {
+  bash "$(skill loudnorm)" "$credited" "$leveled" >/dev/null || {
     log "[phase 3 / span $idx / captions] loudnorm FAILED"
     echo "loudnorm" > "$dir/clip_${idx}.fail.captions"; return 1
   }
