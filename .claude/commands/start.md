@@ -17,6 +17,7 @@ boundaries so unrelated clips do not pollute later decisions.
 
 ```
 /start <youtube-url>                       # fresh ingest + full pipeline
+/start <youtube-id>                        # bare 11-character YouTube IDs are accepted
 /start <source-id>                         # reuse already-ingested work/<id>/
 /start <id-or-url> <id-or-url> ...         # batch — process each sequentially
 ```
