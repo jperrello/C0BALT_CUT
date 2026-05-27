@@ -52,11 +52,18 @@ fi
 
 # ---- multi-arg wrapper ---------------------------------------------------
 # Re-exec self once per arg so each video gets a clean trap/pane lifecycle.
-if [[ $# -gt 1 ]]; then
+if [[ $# -gt 1 || "$1" =~ [[:space:]] ]]; then
   self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
   db="${MCPTUBE_DB:-$HOME/.mcptube/mcptube.db}"
-  ok=0; fail=0; i=0; total=$#
-  for a in "$@"; do
+  declare -a batch=()
+  if [[ $# -gt 1 ]]; then
+    batch=("$@")
+  else
+    read -r -a batch <<< "$1"
+  fi
+  ok=0; fail=0; i=0; total="${#batch[@]}"
+  for a in "${batch[@]}"; do
+    [[ -n "$a" ]] || continue
     i=$((i + 1))
     echo
     echo "########## [$i/$total] $a ##########" >&2
@@ -92,6 +99,15 @@ cd "$root"
 skill() { echo "$root/.claude/skills/$1/$1.sh"; }
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
+youtube() {
+  local val="$1"
+  if [[ "$val" =~ ^[A-Za-z0-9_-]{11}$ ]]; then
+    printf 'https://www.youtube.com/watch?v=%s\n' "$val"
+    return 0
+  fi
+  printf '%s\n' "$val"
+}
+
 # ---- preflight: mcptube ---------------------------------------------------
 mcp_url="${MCPTUBE_URL:-http://127.0.0.1:9093/mcp}"
 code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 4 "$mcp_url" 2>/dev/null)"
@@ -114,7 +130,7 @@ if [[ -d "work/$arg" && -f "work/$arg/source.mp4" ]]; then
   url=""
   log "reusing source-id $id"
 else
-  url="$arg"
+  url="$(youtube "$arg")"
   id="$(printf '%s' "$url" | shasum | cut -c1-10)"
   log "new url $url -> source-id $id"
 fi
