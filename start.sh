@@ -27,24 +27,65 @@ set -uo pipefail
 # are unset. Strip them at the very top so every child inherits a clean env.
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT
 
-arg="${1:-}"
 n="${SHORTS_N:-5}"
 dmin="${SHORTS_DMIN:-20}"
 dmax="${SHORTS_DMAX:-60}"
 max_par="${SHORTS_MAX_PAR:-8}"
 
-if [[ -z "$arg" ]]; then
+if [[ $# -lt 1 ]]; then
   cat >&2 <<EOF
-usage: start.sh <url-or-source-id>
+usage: start.sh <url-or-source-id> [<url-or-source-id> ...]
+
+Pass multiple URLs / video IDs / source-ids to process them sequentially.
+Each video's tmux panes are torn down before the next one starts.
+After a successful run on a YouTube ID, edited_at is stamped in mcptube.
 
 env knobs:
   SHORTS_N        number of spans to pick (default 5)
   SHORTS_DMIN     min span seconds (default 20)
   SHORTS_DMAX     max span seconds (default 60)
   MCPTUBE_URL     mcptube MCP endpoint (default http://127.0.0.1:9093/mcp)
+  MCPTUBE_DB      mcptube sqlite path (default \$HOME/.mcptube/mcptube.db)
 EOF
   exit 2
 fi
+
+# ---- multi-arg wrapper ---------------------------------------------------
+# Re-exec self once per arg so each video gets a clean trap/pane lifecycle.
+if [[ $# -gt 1 ]]; then
+  self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  db="${MCPTUBE_DB:-$HOME/.mcptube/mcptube.db}"
+  ok=0; fail=0; i=0; total=$#
+  for a in "$@"; do
+    i=$((i + 1))
+    echo
+    echo "########## [$i/$total] $a ##########" >&2
+    if bash "$self" "$a"; then
+      ok=$((ok + 1))
+      # If $a looks like a bare YouTube video_id (11 chars, [-_A-Za-z0-9]),
+      # stamp edited_at. URLs handled by extracting the id below.
+      vid=""
+      if [[ "$a" =~ ^[A-Za-z0-9_-]{11}$ ]]; then
+        vid="$a"
+      elif [[ "$a" =~ (youtu\.be/|v=)([A-Za-z0-9_-]{11}) ]]; then
+        vid="${BASH_REMATCH[2]}"
+      fi
+      if [[ -n "$vid" && -f "$db" ]]; then
+        ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        sqlite3 "$db" "UPDATE videos SET edited_at = '$ts' WHERE video_id = '$vid';" \
+          && echo "start: stamped edited_at for $vid" >&2
+      fi
+    else
+      fail=$((fail + 1))
+      echo "start: [$i/$total] $a FAILED — continuing" >&2
+    fi
+  done
+  echo
+  echo "start: batch done — $ok ok, $fail failed" >&2
+  exit 0
+fi
+
+arg="$1"
 
 root="$(cd "$(dirname "$0")" && pwd)"
 cd "$root"
@@ -446,8 +487,20 @@ run_phase4() {
     return 1
   fi
 
-  log "[phase 4 / span $idx] save-local"
-  bash "$(skill save-local)" "$final" "$src" "short_$idx.mp4" >/dev/null || {
+  log "[phase 4 / span $idx] name-short"
+  local title_file="$dir/clip_${idx}.title.txt"
+  local short_name="short_$idx.mp4"
+  if [[ -f "$title_file" ]]; then
+    short_name="$(bash "$(skill name-short)" "$title_file" 2>/dev/null || echo "short_$idx.mp4")"
+    [[ "$short_name" == ".mp4" || -z "$short_name" ]] && short_name="short_$idx.mp4"
+  fi
+
+  if [[ -e "$out_dir/$short_name" ]]; then
+    short_name="${short_name%.mp4}_$idx.mp4"
+  fi
+
+  log "[phase 4 / span $idx] save-local -> $short_name"
+  bash "$(skill save-local)" "$final" "$src" "$short_name" >/dev/null || {
     log "[phase 4 / span $idx] save-local FAILED"
     echo "save-local" > "$dir/clip_${idx}.fail.completion"
     return 1
