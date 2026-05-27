@@ -2,6 +2,10 @@
 # pick-mood: clip transcript -> chosen ./songs/<mood>/ folder name.
 set -uo pipefail
 
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/pane.sh"
+parse_pane_flag "$@"
+set -- "${SHORTS_REST[@]+"${SHORTS_REST[@]}"}"
+
 transcript="${1:-}"
 out="${2:-}"
 
@@ -32,8 +36,8 @@ prompt="$tmp/prompt.txt"
 python3 "$here/build_prompt.py" "$transcript" "$songs_root" > "$prompt"
 
 reply="$tmp/reply.txt"
-if ! claude -p --output-format text < "$prompt" > "$reply" 2>"$tmp/claude.err"; then
-  echo "pick-mood: claude -p failed; falling back to ALL SONGS" >&2
+if ! run_claude_step pick-mood "$prompt" "$reply" 2>"$tmp/claude.err"; then
+  echo "pick-mood: claude step failed; falling back to ALL SONGS" >&2
   cat "$tmp/claude.err" >&2
   : > "$reply"
 fi

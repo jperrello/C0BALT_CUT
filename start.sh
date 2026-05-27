@@ -3,25 +3,22 @@
 #
 # Architecture
 # ------------
-# The orchestrator (this script) is the single driver. Each "pane" is a
-# detached tmux session running a plain bash shell — the orchestrator
-# sends commands into it via `tmux send-keys` and waits on sentinel files.
+# The orchestrator (this script) is the single driver. Bash/media panes run a
+# plain shell. Semantic lanes run long-lived Claude sessions so related steps
+# can keep artifact context warm within one source/span.
 #
-# For Claude-driven skills, we pass `--pane <name>` and the skill's wrapper
-# (via .claude/skills/_lib/pane.sh) routes its prompt through that pane:
-#   - write prompt to <_pane>/<name>/<step>/in.txt
-#   - send `claude -p < in.txt > out.txt; sync; touch out.done` into pane
-#   - wait on out.done, read out.txt
+# For Claude-driven skills, we pass `--pane <name>` and set
+# SHORTS_PANE_MODE=chat. The skill wrapper writes the prompt to disk, sends a
+# small file-based task into that pane, waits for out.txt to settle, then parses
+# the reply. This avoids a fresh Claude process per semantic step.
 #
 # For bash steps, the orchestrator just runs them directly (no pane round-trip
 # is needed — bash is already fast).
 #
-# Why not a long-lived `claude` REPL per pane?
-# Driving an interactive `claude` REPL via send-keys is fragile (no reliable
-# end-of-response signal). Spawning a fresh `claude -p` per pane round is
-# cheap, gives the user a visible-via-attach Claude run, and naturally gives
-# each step a clean context window — replacing `clear-and-talk` between
-# unrelated jobs in the same pane.
+# Context rule:
+# Clear at lane boundaries, keep context within the lane. The analysis pane
+# handles one source transcript; each editor/captions/completion pane handles
+# one span. If these panes are ever reused across sources/spans, clear first.
 
 set -uo pipefail
 
@@ -83,16 +80,45 @@ fi
 dir="$root/work/$id"
 mkdir -p "$dir/_pane"
 export SHORTS_PANE_DIR="$dir/_pane"
+export SHORTS_PANE_MODE=chat
 
 # ---- pane management ------------------------------------------------------
 declare -a PANES=()
 
 pane_new() {
   local name="$1"
+  local mode="${2:-bash}"
   tmux kill-session -t "$name" 2>/dev/null
   tmux new-session -d -s "$name" -x 200 -y 50 "bash -l" 2>/dev/null
   mkdir -p "$SHORTS_PANE_DIR/$name"
+  tmux set-option -t "$name" remain-on-exit on >/dev/null 2>&1 || true
+  if [[ "$mode" == "claude" ]]; then
+    tmux respawn-pane -k -t "$name" \
+      "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; exec claude --dangerously-skip-permissions"
+    pane_wait_idle "$name" 30 || log "warn: $name did not show a Claude prompt before dispatch"
+    pane_chat_clear "$name"
+  fi
   PANES+=("$name")
+}
+
+pane_wait_idle() {
+  local pane="$1" timeout="${2:-10}"
+  local waited=0
+  while (( waited < timeout * 5 )); do
+    if tmux capture-pane -t "$pane" -p -J -S -8 2>/dev/null | grep -qE '│ >|❯'; then
+      return 0
+    fi
+    sleep 0.2
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+pane_chat_clear() {
+  local pane="$1"
+  tmux send-keys -t "$pane" -l -- "/clear"
+  tmux send-keys -t "$pane" Enter
+  pane_wait_idle "$pane" 10 || true
 }
 
 _cleaned=0
@@ -139,9 +165,9 @@ pane_wait() {
 # ---- phase 1: source-prep + analysis (parallel) --------------------------
 sp="shorts-$id-srcprep"
 an="shorts-$id-analysis"
-log "[phase 1] launching $sp + $an"
+mc="shorts-$id-mcptube"
+log "[phase 1] launching $sp"
 pane_new "$sp"
-pane_new "$an"
 
 src="$dir/source.mp4"
 tx="$dir/transcript.json"
@@ -167,11 +193,12 @@ else
   fi
 fi
 
-# analysis: mcptube add (if URL) — fire-and-poll. The MCP add can run in
-# parallel with whisper; we don't need its result before moving on.
+# analysis: mcptube add (if URL) — fire-and-poll from a shell pane. The
+# analysis pane becomes a long-lived Claude lane after srcprep completes.
 if [[ -n "$url" ]]; then
   log "[phase 1] analysis: mcptube add (background)"
-  pane_bash "$an" "mcptube_add" \
+  pane_new "$mc"
+  pane_bash "$mc" "mcptube_add" \
     "claude -p --output-format text >/dev/null 2>&1 <<EOF
 Call the mcptube MCP tool add_video with url=\"$url\". After it returns, reply with the single word 'done' and nothing else.
 EOF"
@@ -184,6 +211,11 @@ if ! pane_wait "$sp" "srcprep" 7200; then
   exit 2
 fi
 log "[phase 1] srcprep done"
+
+# Switch analysis into a persistent Claude lane. Keep this lane warm across
+# source-level semantic steps; clear it before a new source, not between
+# segment-topics / pick-segments / verify-coherence.
+pane_new "$an" claude
 
 # Run topics/picks/coherence through the analysis pane via --pane.
 log "[phase 1 / analysis] segment-topics"
@@ -223,7 +255,7 @@ run_span() {
   local cp_pane="shorts-$id-captions-$idx"
   local cm="shorts-$id-completion-$idx"
 
-  pane_new "$ed"
+  pane_new "$ed" claude
 
   # Read t0/t1 for this span from segments.json
   local t0 t1
@@ -342,7 +374,7 @@ print(s["t0"], s["t1"])' "$span_out")
 run_phase3_captions() {
   local i="$1" idx="$2"
   local cp_pane="shorts-$id-captions-$idx"
-  pane_new "$cp_pane"
+  pane_new "$cp_pane" claude
   local vert; vert="$(cat "$dir/clip_${idx}.vert.path")"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
 
@@ -389,7 +421,7 @@ run_phase3_captions() {
 run_phase4() {
   local i="$1" idx="$2"
   local cm="shorts-$id-completion-$idx"
-  pane_new "$cm"
+  pane_new "$cm" claude
   local leveled; leveled="$(cat "$dir/clip_${idx}.leveled.path")"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
 
@@ -399,7 +431,7 @@ run_phase4() {
 
   log "[phase 4 / span $idx] pick-mood + bg-music"
   local mood_file="$dir/clip_${idx}.mood.txt"
-  bash "$(skill pick-mood)" "$ctx" "$mood_file" >/dev/null || echo "ALL SONGS" > "$mood_file"
+  bash "$(skill pick-mood)" "$ctx" "$mood_file" --pane "$cm" >/dev/null || echo "ALL SONGS" > "$mood_file"
   local mood; mood="$(cat "$mood_file")"
   local final="$dir/clip_${idx}.final.mp4"
   bash "$(skill bg-music)" "$ctaed" "$final" "$mood" >/dev/null || cp "$ctaed" "$final"

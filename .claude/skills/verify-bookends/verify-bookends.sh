@@ -3,6 +3,10 @@
 # are clean, and if not propose an inward-only trim.
 set -uo pipefail
 
+source "$(cd "$(dirname "$0")/../_lib" && pwd)/pane.sh"
+parse_pane_flag "$@"
+set -- "${SHORTS_REST[@]+"${SHORTS_REST[@]}"}"
+
 in_clip="${1:-}"
 in_tx="${2:-}"
 out_json="${3:-}"
@@ -185,7 +189,7 @@ if [[ -f "$tmp/head.jpg" && -f "$tmp/tail.jpg" ]]; then
 fi
 
 reply_file="$tmp/reply.txt"
-claude -p --output-format text < "$prompt_file" > "$reply_file" 2>"$tmp/claude.err" || {
+run_claude_step verify-bookends "$prompt_file" "$reply_file" 2>"$tmp/claude.err" || {
   cat "$tmp/claude.err" >&2
   echo '{"action":"keep","reason":"claude failed"}' > "$out_json"
   printf '%s' "$sig" > "$meta"

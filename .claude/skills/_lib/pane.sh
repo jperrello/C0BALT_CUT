@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # Shared helper for the 8 Claude-driven skills.
 #
-# Lets each skill drive an existing tmux pane via send-keys + sentinel files
-# instead of spawning its own `claude -p` subprocess. Use by sourcing this
-# file and calling `run_claude_step` instead of `claude -p`.
+# Lets each skill drive an existing tmux pane via send-keys + sentinel files.
+# Use by sourcing this file and calling `run_claude_step` instead of
+# `claude -p`.
 #
-# Two modes:
+# Three modes:
 #   - SHORTS_PANE unset/empty: behave exactly as before (`claude -p`).
 #   - SHORTS_PANE=<tmux_target>: write prompt to
 #       $SHORTS_PANE_DIR/<step>/in.txt, send a shell command into the pane
 #       that runs `claude -p`, and wait on out.done before reading out.txt.
+#   - SHORTS_PANE_MODE=chat: the pane is a long-lived interactive Claude
+#       session. Send it a small file-based task: read in.txt, write out.txt,
+#       touch out.done. This preserves lane context across related steps.
 #
 # Read protocol (revised after the original sentinel approach raced — see
 # bd shorts-tnd):
@@ -43,9 +46,6 @@ parse_pane_flag() {
   done
 }
 
-# usage: run_claude_step <step_name> <prompt_file> <reply_file>
-# In headless mode, runs claude -p directly.
-# In pane mode, drives the pane via tmux and waits on a sentinel.
 run_claude_step() {
   local step="$1" prompt="$2" reply="$3"
   if [[ -z "${SHORTS_PANE:-}" ]]; then
@@ -59,19 +59,34 @@ run_claude_step() {
   rm -f "$dir/out.txt" "$dir/out.done"
   cp "$prompt" "$dir/in.txt"
 
-  # The pane runs a fresh `claude -p` per round. This is cheaper than
-  # maintaining a long-lived REPL via send-keys (which is fragile) and
-  # naturally gives a clean context per step.
-  # unset CLAUDECODE/CLAUDE_CODE_ENTRYPOINT — `claude -p` refuses to nest
-  # inside another Claude Code session and this orchestrator is itself
-  # commonly invoked from one.
-  local cmd="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; cat '$dir/in.txt' | claude -p --output-format text > '$dir/out.txt' 2>>'$dir/log'"
-  tmux send-keys -t "$SHORTS_PANE" "$cmd" Enter
+  if [[ "${SHORTS_PANE_MODE:-}" == "chat" ]]; then
+    local msg
+    msg="$(python3 - "$step" "$dir/in.txt" "$dir/out.txt" "$dir/out.done" <<'PY'
+import json, sys
+step, prompt, out, done = sys.argv[1:]
+print(
+    "Shorts pane step "
+    + json.dumps(step)
+    + ". Read the task prompt from "
+    + json.dumps(prompt)
+    + ". Write only the raw parser reply to "
+    + json.dumps(out)
+    + ". Then run: "
+    + json.dumps(f"touch {done!r}")
+    + ". Do not stop until both files exist."
+)
+PY
+)"
+    tmux send-keys -t "$SHORTS_PANE" -l -- "$msg"
+    tmux send-keys -t "$SHORTS_PANE" Enter
+  else
+    # unset CLAUDECODE/CLAUDE_CODE_ENTRYPOINT — `claude -p` refuses to nest
+    # inside another Claude Code session and this orchestrator is itself
+    # commonly invoked from one.
+    local cmd="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; cat '$dir/in.txt' | claude -p --output-format text > '$dir/out.txt' 2>>'$dir/log'; touch '$dir/out.done'"
+    tmux send-keys -t "$SHORTS_PANE" "$cmd" Enter
+  fi
 
-  # Tick-based settle: out.txt is considered ready when it is non-empty
-  # AND its size has not changed across one tick. The sentinel approach
-  # (touch out.done at end) raced; this approach naturally waits for
-  # whatever the pane finishes writing.
   local tick="${PANE_TICK:-6}"
   local timeout="${PANE_TIMEOUT:-1800}"
   local waited=0 prev=-1 cur=0
@@ -84,6 +99,10 @@ run_claude_step() {
       break
     fi
     prev=$cur
+    if (( cur == 0 && waited >= tick )) && [[ -f "$dir/out.done" ]]; then
+      echo "pane.sh: $SHORTS_PANE/$step produced empty output" >&2
+      return 1
+    fi
     if (( waited >= timeout )); then
       echo "pane.sh: timeout (${timeout}s) waiting on $SHORTS_PANE/$step (last size=$cur)" >&2
       return 1
@@ -95,9 +114,14 @@ run_claude_step() {
 
 # usage: pane_clear
 # Issues `/clear` to the pane between unrelated Claude jobs. No-op outside
-# pane mode. (We use a fresh `claude -p` per round so there's no persistent
-# context to clear anyway — this is mostly a hint for clarity in pane logs.)
+# pane mode. In chat mode this is how the orchestrator preserves context
+# inside one source/span lane without carrying it into unrelated work.
 pane_clear() {
   [[ -z "${SHORTS_PANE:-}" ]] && return 0
+  if [[ "${SHORTS_PANE_MODE:-}" == "chat" ]]; then
+    tmux send-keys -t "$SHORTS_PANE" -l -- "/clear"
+    tmux send-keys -t "$SHORTS_PANE" Enter
+    return 0
+  fi
   tmux send-keys -t "$SHORTS_PANE" "echo '--- clear ---'" Enter
 }

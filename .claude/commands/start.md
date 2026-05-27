@@ -9,7 +9,9 @@ user-invocable: true
 
 Top-level entry point for the shorts pipeline. Fans the work across
 named tmux panes so you can `tmux attach -t shorts-<id>-<phase>-<n>` to
-watch any single Claude reasoning step (or ffmpeg run) live.
+watch any Claude lane (or ffmpeg run) live. Semantic panes are long-lived:
+they preserve context within one source/span and are cleared at lane
+boundaries so unrelated clips do not pollute later decisions.
 
 ## Invoke
 
@@ -26,10 +28,11 @@ with instructions if it's unreachable. Set `SHORTS_N`, `SHORTS_DMIN`,
 ## Pane layout (per spec §1)
 
 - `shorts-<id>-srcprep` — bash: ingest + transcribe
-- `shorts-<id>-analysis` — Claude: mcptube add, then topics → picks → coherence
+- `shorts-<id>-mcptube` — bash: background mcptube add
+- `shorts-<id>-analysis` — Claude: topics → picks → coherence
 - `shorts-<id>-editor-NN` — Claude: bookend-trim, trim-filler, verify-bookends (with bash skills interleaved)
 - `shorts-<id>-captions-NN` — Claude: chunk-captions, generate-title (bash: burn-subtitles, title-transition, loudnorm)
-- `shorts-<id>-completion-NN` — bash: like-subscribe-overlay, bg-music, qc, save-local
+- `shorts-<id>-completion-NN` — Claude: pick-mood; bash: like-subscribe-overlay, bg-music, qc, save-local
 
 Panes are torn down on run completion. `shorts.sh` remains as a
 non-interactive fallback.
