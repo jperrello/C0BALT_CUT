@@ -54,25 +54,46 @@ bd close <id>         # Complete work
 
 Atomic Claude Code skills, one per video-editing operation. Each skill lives at `.claude/skills/<name>/SKILL.md` and is independently invocable. Skills chain into the full shorts pipeline but are NOT a monolithic codebase.
 
-**Stack:** whisper.cpp (local transcription) + Claude (semantic decisions, via host session or `/crew` tmux members — no API key) + ffmpeg (all media ops) + MediaPipe (face boxes). Rails + Sidekiq is an optional wrapper, not required.
+**Stack:** whisper.cpp (local transcription) + Claude (semantic decisions, via host session or `/crew` tmux members — no API key) + ffmpeg (all media ops). Rails + Sidekiq is an optional wrapper, not required.
 
-**No Anthropic API key.** Claude-driven skills (`pick-segments`, `pick-speaker`) run inside the host Claude Code session or are dispatched to `/crew` members on tmux. Both use the user's Claude subscription.
+**No Anthropic API key.** Claude-driven skills (`pick-segments`, `segment-topics`, `verify-coherence`, `bookend-trim`, `trim-filler`, `chunk-captions`, `generate-title`, `pick-mood`) run inside the host Claude Code session or are dispatched to `/crew` members on tmux. All use the user's Claude subscription.
 
-**Pipeline shape:**
+**Pipeline shape (canonical — every skill below MUST run on a full pipeline invocation):**
 ```
 source video
-  ├─ transcribe       (whisper.cpp local)
-  ├─ detect-faces     (MediaPipe)
-  ├─ pick-speaker     (Claude over face boxes + transcript)
-  ├─ pick-segments    (Claude over transcript + RMS) → N spans
+  ├─ ingest           (yt-dlp → work/<id>/source.mp4 + ingest.json)
+  ├─ transcribe       (whisper.cpp local → transcript.json)
+  ├─ segment-topics   (Claude → topics.json)
+  ├─ pick-segments    (Claude over transcript + RMS + topics → segments.raw.json, N spans)
+  ├─ verify-coherence (tighten incoherent spans to the dominant topic)
+  ├─ bookend-trim     (Claude snaps each span's [t0,t1] to sentence boundaries)
   └─ per span:
-       cut-clip → reframe-vertical → burn-subtitles → loudnorm → qc-clip → save-local
+       cut-clip
+        → rebase
+        → trim-filler + cut-filler     (Claude cuts filler / trail-offs / digressive asides)
+        → tighten-pace                 (collapse remaining inter-word silences >0.25s)
+        → fit-vertical                 (1080x1920, blurred bars top/bottom — NO speaker-tracking crop)
+        → chunk-captions + burn-subtitles (word-karaoke PNG overlay sequence)
+        → generate-title + title-transition (silent animated intro card)
+        → loudnorm                     (two-pass to -14 LUFS)
+        → like-subscribe-overlay       (animated CTA in the last ~4s + bell SFX)
+        → pick-mood + bg-music         (Claude picks ./songs/<mood>/ from clip transcript; bed at -18dB, last 5 picks blacklisted via ./songs/.recent)
+        → qc-clip                      (ffprobe duration + size gate)
+        → save-local                   (./output/<source>/short_NN.mp4)
 ```
+
+**Hard rules for any "rerun the pipeline" / full-pipeline request:**
+- Use `fit-vertical`, NOT `reframe-vertical`. The speaker-tracking crop is currently disabled in the canonical chain; the blurred-bars 9:16 reframe is the source of truth.
+- `title-transition` is mandatory and runs AFTER `burn-subtitles`, BEFORE `loudnorm`. The title text comes from `generate-title`.
+- `bookend-trim` runs AFTER `verify-coherence` and BEFORE `cut-clip`. It snaps each span's `[t0, t1]` to a clean sentence boundary so shorts don't end mid-sentence.
+- `like-subscribe-overlay` runs AFTER `loudnorm` and BEFORE `bg-music`. It overlays an animated CTA on the last ~4s of the clip.
+- If `shorts.sh` does not invoke every skill above in the listed order, `shorts.sh` is wrong — fix the entrypoint, do not silently skip skills.
+- Verify after a run: every saved `output/<source>/short_NN.mp4` must be 1080x1920, have a title card on the first ~2.5s, AND have a CTA card on the last ~4s. If any is missing, the pipeline regressed.
 
 ## Conventions
 
 - **One skill per atomic op.** Never bundle two operations into one skill. Tempting helpers (e.g. "transcribe + burn-subtitles") belong as separate skills that share I/O contracts.
-- **JSON between skills.** Inter-skill data passes as JSON files on disk (transcript.json, faces.json, speaker.json). Reading and writing is cheaper than threading state, and any skill can be re-run independently.
+- **JSON between skills.** Inter-skill data passes as JSON files on disk (transcript.json, topics.json, segments.json, etc.). Reading and writing is cheaper than threading state, and any skill can be re-run independently.
 - **Source-of-truth paths in `.env`.** Binary paths (whisper-cli, model file) live in `.env`; never hardcode.
 - **No CLAUDE.md per skill.** A single SKILL.md with frontmatter is the contract.
 

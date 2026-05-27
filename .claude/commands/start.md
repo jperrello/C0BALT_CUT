@@ -29,8 +29,7 @@ with instructions if it's unreachable. Set `SHORTS_N`, `SHORTS_DMIN`,
 - `shorts-<id>-analysis` — Claude: mcptube add, then topics → picks → coherence
 - `shorts-<id>-editor-NN` — Claude: bookend-trim, trim-filler, verify-bookends (with bash skills interleaved)
 - `shorts-<id>-captions-NN` — Claude: chunk-captions, generate-title (bash: burn-subtitles, title-transition, loudnorm)
-- `shorts-<id>-broll-NN` — Claude: broll-pick
-- `shorts-<id>-completion-NN` — bash: broll-composite, like-subscribe-overlay, bg-music, qc, save-local
+- `shorts-<id>-completion-NN` — bash: like-subscribe-overlay, bg-music, qc, save-local
 
 Panes are torn down on run completion. `shorts.sh` remains as a
 non-interactive fallback.

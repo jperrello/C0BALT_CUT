@@ -201,8 +201,8 @@ log "[phase 1] $count span(s) survived coherence check"
 [[ "$count" -gt 0 ]] || { log "FATAL: no spans survived"; exit 4; }
 
 # ---- phase 2-4: per-span fan-out -----------------------------------------
-# For each span we spawn its editor pane (phase 2), then captions+broll panes
-# (phase 3, parallel), then a completion pane (phase 4). Span-level failures
+# For each span we spawn its editor pane (phase 2), then captions pane
+# (phase 3), then a completion pane (phase 4). Span-level failures
 # are localized: a failed editor cancels phases 3/4 for that span only.
 
 # Output dir cleanup (re-run overwrites)
@@ -221,7 +221,6 @@ run_span() {
   local idx; idx="$(printf '%02d' "$((i + 1))")"
   local ed="shorts-$id-editor-$idx"
   local cp_pane="shorts-$id-captions-$idx"
-  local br="shorts-$id-broll-$idx"
   local cm="shorts-$id-completion-$idx"
 
   pane_new "$ed"
@@ -387,49 +386,16 @@ run_phase3_captions() {
   return 0
 }
 
-run_phase3_broll() {
-  local i="$1" idx="$2"
-  local br="shorts-$id-broll-$idx"
-  pane_new "$br"
-  local vert; vert="$(cat "$dir/clip_${idx}.vert.path")"
-  local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
-  local chunks="$dir/clip_${idx}.chunks.json"
-  local plan="$dir/clip_${idx}.broll_plan.json"
-
-  if [[ ! -f "$(skill broll-pick)" ]]; then
-    log "[phase 3 / span $idx / broll] broll-pick skill missing — emitting empty plan (shorts-gry pending)"
-    printf '%s\n' '{"picks": []}' > "$plan"
-    return 0
-  fi
-  log "[phase 3 / span $idx / broll] broll-pick"
-  if ! bash "$(skill broll-pick)" "$vert" "$ctx" "$plan" "$ingest_json" "${chunks:-}" --pane "$br" >/dev/null; then
-    log "[phase 3 / span $idx / broll] broll-pick FAILED (continuing with empty plan)"
-    printf '%s\n' '{"picks": []}' > "$plan"
-  fi
-  return 0
-}
-
 run_phase4() {
   local i="$1" idx="$2"
   local cm="shorts-$id-completion-$idx"
   pane_new "$cm"
   local leveled; leveled="$(cat "$dir/clip_${idx}.leveled.path")"
-  local plan="$dir/clip_${idx}.broll_plan.json"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
-
-  local brolled="$dir/clip_${idx}.brolled.mp4"
-  if [[ -f "$(skill broll-composite)" && -f "$plan" ]]; then
-    log "[phase 4 / span $idx] broll-composite"
-    bash "$(skill broll-composite)" "$leveled" "$plan" "$brolled" >/dev/null \
-      || cp "$leveled" "$brolled"
-  else
-    log "[phase 4 / span $idx] broll-composite skill missing (shorts-gry pending) — passthrough"
-    cp "$leveled" "$brolled"
-  fi
 
   log "[phase 4 / span $idx] like-subscribe-overlay"
   local ctaed="$dir/clip_${idx}.ctaed.mp4"
-  bash "$(skill like-subscribe-overlay)" "$brolled" "$ctaed" 4.0 >/dev/null || cp "$brolled" "$ctaed"
+  bash "$(skill like-subscribe-overlay)" "$leveled" "$ctaed" 4.0 >/dev/null || cp "$leveled" "$ctaed"
 
   log "[phase 4 / span $idx] pick-mood + bg-music"
   local mood_file="$dir/clip_${idx}.mood.txt"
@@ -479,12 +445,10 @@ for ((i = 0; i < count; i++)); do
   fi
   ( run_phase3_captions "$i" "$idx" ) &
   p3_pids+=($!)
-  ( run_phase3_broll "$i" "$idx" ) &
-  p3_pids+=($!)
 done
-log "[phase 3] ${#p3_pids[@]} captions+broll pane(s) running"
+log "[phase 3] ${#p3_pids[@]} captions pane(s) running"
 for pid in "${p3_pids[@]}"; do wait "$pid"; done
-log "[phase 3] all captions+broll done"
+log "[phase 3] all captions done"
 
 declare -a p4_pids=()
 for ((i = 0; i < count; i++)); do

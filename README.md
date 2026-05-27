@@ -22,9 +22,7 @@ Skills live in `.claude/skills/<name>/SKILL.md`. Invoke any one directly via Cla
 |---|---|
 | `ingest` | YouTube URL → `work/<id>/source.mp4` + `ingest.json` (yt-dlp) |
 | `transcribe` | Video → JSON transcript with word timestamps (whisper.cpp local) |
-| `detect-faces` | Per-frame face boxes via MediaPipe |
-| `pick-speaker` | Dominant-face heuristic over boxes → active-speaker box per span |
-| `reframe-vertical` | Speaker-tracked 9:16 crop path via ffmpeg `sendcmd` |
+| `fit-vertical` | 9:16 reframe with blurred bars top/bottom (no speaker tracking) |
 | `pick-segments` | Claude ranks transcript spans (+ RMS energy) → N clip-worthy spans |
 | `burn-subtitles` | Word-timed subtitles burned in as a PNG overlay sequence |
 | `loudnorm` | Two-pass ffmpeg loudnorm to broadcast levels |
@@ -46,11 +44,12 @@ pip install mediapipe opencv-python numpy
 ./shorts.sh <youtube-url> [n=5] [dmin=20] [dmax=60]
 ```
 
-Drives the full chain — ingest → transcribe → detect-faces → pick-speaker →
-pick-segments → per span (cut → reframe → subtitles → loudnorm → qc → save).
-Intermediate JSON/video lands in `work/<id>/`; finished shorts in
-`./output/<source-name>/`. Per-clip transcript and speaker tracks are sliced to
-clip-local time by `rebase.py`. Re-runs are cheap — every skill caches on mtime.
+Drives the full chain — ingest → transcribe → segment-topics → pick-segments →
+verify-coherence → bookend-trim → per span (cut → trim-filler → tighten-pace →
+fit-vertical → subtitles → title → loudnorm → CTA → bg-music → qc →
+save). Intermediate JSON/video lands in `work/<id>/`; finished shorts in
+`./output/<source-name>/`. Per-clip transcript is sliced to clip-local time by
+`rebase.py`. Re-runs are cheap — every skill caches on mtime.
 
 ## Status
 

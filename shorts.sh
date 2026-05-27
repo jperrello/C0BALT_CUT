@@ -140,15 +140,9 @@ print(s["t0"], s["t1"])' "$segments" "$i")
     leveled="$dir/clip_$idx.leveled.mp4"
     bash "$(skill loudnorm)" "$titled" "$leveled"
 
-    # broll split (May26 §2): broll-pick (Claude+Pexels+vision verify) -> broll-composite (pure ffmpeg)
-    broll_plan="$dir/clip_$idx.broll_plan.json"
-    bash "$(skill broll-pick)" "$leveled" "$ctx" "$broll_plan" "$ingest_json" "$chunks" >/dev/null || echo '{"picks": []}' > "$broll_plan"
-    brolled="$dir/clip_$idx.brolled.mp4"
-    bash "$(skill broll-composite)" "$leveled" "$broll_plan" "$brolled" >/dev/null || cp "$leveled" "$brolled"
-
     # like-subscribe-overlay: animated CTA in the last 4s
     ctaed="$dir/clip_$idx.ctaed.mp4"
-    bash "$(skill like-subscribe-overlay)" "$brolled" "$ctaed" 4.0 >/dev/null || cp "$brolled" "$ctaed"
+    bash "$(skill like-subscribe-overlay)" "$leveled" "$ctaed" 4.0 >/dev/null || cp "$leveled" "$ctaed"
 
     # pick-mood: Claude reads clip transcript and picks a ./songs/<mood>/ folder
     mood_file="$dir/clip_$idx.mood.txt"
