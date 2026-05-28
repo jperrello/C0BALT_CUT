@@ -10,7 +10,7 @@
 #   SHORTS_VBITRATE  = video bitrate for VT mode    (default: 8M)
 #   SHORTS_X264_CRF  = crf for x264 fallback        (default: 20)
 #   SHORTS_X264_PRESET = preset for x264 fallback   (default: veryfast)
-#   SHORTS_THREADS   = -threads value               (default: 8)
+#   SHORTS_THREADS   = -threads value               (default: 4)
 
 _shorts_have_vt() {
   ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_videotoolbox
@@ -58,7 +58,7 @@ vt_decode_args() {
 
 # Thread cap to avoid context-switch thrash on high-core Macs (NETINT talk).
 vt_threads() {
-  printf '%s\0' -threads "${SHORTS_THREADS:-8}"
+  printf '%s\0' -threads "${SHORTS_THREADS:-4}"
 }
 
 # Helper: read NUL-delimited tokens from a vt_* function into a bash array.

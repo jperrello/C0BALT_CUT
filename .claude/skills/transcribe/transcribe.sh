@@ -44,7 +44,10 @@ wav="$tmp/audio.wav"
 ffmpeg -nostdin -hide_banner -loglevel error -y -i "$input" -ac 1 -ar 16000 -f wav "$wav"
 
 base="$tmp/words"
+wt="${SHORTS_WHISPER_THREADS:-$(( $(sysctl -n hw.logicalcpu 2>/dev/null || echo 8) / 2 ))}"
+(( wt < 1 )) && wt=1
 "$WHISPER_BIN" \
+  --threads "$wt" \
   --model "$WHISPER_MODEL" \
   --language "$lang" \
   --output-json-full \

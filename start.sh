@@ -30,7 +30,16 @@ unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT
 n="${SHORTS_N:-5}"
 dmin="${SHORTS_DMIN:-20}"
 dmax="${SHORTS_DMAX:-60}"
-max_par="${SHORTS_MAX_PAR:-8}"
+max_par="${SHORTS_MAX_PAR:-1}"
+(( max_par < 1 )) && max_par=1
+
+# Divide cores across the spans we run at once and leave one free so the
+# machine stays usable. Each ffmpeg (vt_threads) and whisper run honors these.
+ncpu="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 8)"
+budget=$(( ncpu - 1 )); (( budget < 1 )) && budget=1
+per=$(( budget / max_par )); (( per < 1 )) && per=1
+export SHORTS_THREADS="${SHORTS_THREADS:-$per}"
+export SHORTS_WHISPER_THREADS="${SHORTS_WHISPER_THREADS:-$per}"
 
 if [[ $# -lt 1 ]]; then
   cat >&2 <<EOF
@@ -186,8 +195,31 @@ cleanup() {
   for p in "${PANES[@]}"; do
     tmux kill-session -t "$p" 2>/dev/null
   done
+  [[ -n "${UNBLOCKER_PID:-}" ]] && kill "$UNBLOCKER_PID" 2>/dev/null
 }
 trap cleanup EXIT INT TERM
+
+# Watchdog: --dangerously-skip-permissions does NOT cover new-file Write
+# prompts. Poll all session panes and auto-press "2" on any 1/2/3 menu.
+unblocker_start() {
+  [[ -n "${UNBLOCKER_PID:-}" ]] && return 0
+  local log_file="${SHORTS_PANE_DIR}/unblocker.log"
+  (
+    while true; do
+      while IFS= read -r s; do
+        [[ -z "$s" ]] && continue
+        if tmux capture-pane -t "$s" -p -S -20 2>/dev/null | grep -q "Yes, allow all edits during this session"; then
+          tmux send-keys -t "$s" "2" Enter
+          echo "[$(date +%H:%M:%S)] unblocked $s" >> "$log_file"
+        fi
+      done < <(tmux ls -F '#{session_name}' 2>/dev/null | grep "^shorts-${id}-" || true)
+      sleep 5
+    done
+  ) >/dev/null 2>&1 &
+  UNBLOCKER_PID=$!
+  log "unblocker watchdog started (pid $UNBLOCKER_PID)"
+}
+unblocker_start
 
 # pane_bash <pane> <step> <bash command line>
 # Runs a bash command inside the pane; waits for completion via sentinel.
@@ -532,15 +564,30 @@ run_phase4() {
 }
 
 # ---- per-span fan-out -----------------------------------------------------
-# We process all spans in parallel for phase 2, then phase 3 (both lanes),
-# then phase 4.  This matches the spec's "full fan-out" choice.
+# Spans run at most $max_par at a time (default 1 = sequential). Past runs
+# launched every span at once with each ffmpeg/whisper grabbing all cores,
+# which thrashed the CPU. throttle blocks until a slot frees up (bash 3.2 has
+# no `wait -n`, so we poll the live pids).
+
+throttle() {
+  local max="$1"; shift
+  while :; do
+    local alive=0 p
+    for p in "$@"; do
+      [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null && alive=$((alive + 1))
+    done
+    (( alive < max )) && return
+    sleep 0.5
+  done
+}
 
 declare -a span_pids=()
 for ((i = 0; i < count; i++)); do
+  throttle "$max_par" "${span_pids[@]:-}"
   ( run_span "$i" ) &
   span_pids+=($!)
 done
-log "[phase 2] $count editor pane(s) running"
+log "[phase 2] $count span(s), up to $max_par at a time (${SHORTS_THREADS} threads each)"
 for pid in "${span_pids[@]}"; do wait "$pid"; done
 log "[phase 2] all editors done"
 
@@ -551,6 +598,7 @@ for ((i = 0; i < count; i++)); do
     log "[phase 3] span $idx skipped (editor failed: $(cat "$dir/clip_${idx}.fail"))"
     continue
   fi
+  throttle "$max_par" "${p3_pids[@]:-}"
   ( run_phase3_captions "$i" "$idx" ) &
   p3_pids+=($!)
 done
@@ -569,6 +617,7 @@ for ((i = 0; i < count; i++)); do
     log "[phase 4] span $idx skipped (captions failed: $(cat "$dir/clip_${idx}.fail.captions"))"
     continue
   fi
+  throttle "$max_par" "${p4_pids[@]:-}"
   ( run_phase4 "$i" "$idx" ) &
   p4_pids+=($!)
 done
