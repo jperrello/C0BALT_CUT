@@ -191,10 +191,15 @@ _cleaned=0
 cleanup() {
   (( _cleaned )) && return 0
   _cleaned=1
-  log "cleanup: tearing down ${#PANES[@]} pane(s)"
-  for p in "${PANES[@]}"; do
-    tmux kill-session -t "$p" 2>/dev/null
+  # Kill by name pattern, not the PANES array: per-span panes are created
+  # inside background subshells (run_span/run_phase3/run_phase4), so their
+  # pane_new appends never reach this parent's PANES copy. Globbing every
+  # shorts-<id>-* session catches those leaked panes too.
+  local killed=0 p
+  for p in $(tmux ls -F '#{session_name}' 2>/dev/null | grep "^shorts-${id}-" || true); do
+    tmux kill-session -t "$p" 2>/dev/null && killed=$((killed + 1))
   done
+  log "cleanup: tore down $killed pane(s)"
   [[ -n "${UNBLOCKER_PID:-}" ]] && kill "$UNBLOCKER_PID" 2>/dev/null
 }
 trap cleanup EXIT INT TERM
@@ -326,15 +331,17 @@ log "[phase 1] $count span(s) survived coherence check"
 # (phase 3), then a completion pane (phase 4). Span-level failures
 # are localized: a failed editor cancels phases 3/4 for that span only.
 
-# Output dir cleanup (re-run overwrites)
-src_basename="$(basename "$src" .mp4)"
-src_id_for_out="$(python3 -c 'import json,sys
+# Output folder: a kebab slug of the source title (falls back to the work id),
+# so shorts land in output/<title-slug>/ instead of the generic source stem.
+slug="$(python3 -c 'import json,re,sys
 try:
     d=json.load(open(sys.argv[1]))
-    print(d.get("title") or d.get("id") or d.get("source_id") or "")
-except Exception: print("")' "$ingest_json" 2>/dev/null)"
-[[ -n "$src_id_for_out" ]] || src_id_for_out="$id"
-out_dir="$root/output/$src_id_for_out"
+    t=(d.get("title") or d.get("id") or d.get("source_id") or "").strip()
+except Exception: t=""
+s=re.sub(r"[^a-z0-9]+","-",t.lower()).strip("-")[:80]
+print(s)' "$ingest_json" 2>/dev/null)"
+[[ -n "$slug" ]] || slug="$id"
+out_dir="$root/output/$slug"
 mkdir -p "$out_dir"
 
 run_span() {
@@ -554,8 +561,8 @@ run_phase4() {
     short_name="${short_name%.mp4}_$idx.mp4"
   fi
 
-  log "[phase 4 / span $idx] save-local -> $short_name"
-  bash "$(skill save-local)" "$final" "$src" "$short_name" >/dev/null || {
+  log "[phase 4 / span $idx] save-local -> $slug/$short_name"
+  bash "$(skill save-local)" "$final" "$src" "$short_name" "$slug" >/dev/null || {
     log "[phase 4 / span $idx] save-local FAILED"
     echo "save-local" > "$dir/clip_${idx}.fail.completion"
     return 1

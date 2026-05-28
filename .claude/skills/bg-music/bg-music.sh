@@ -5,10 +5,11 @@ set -euo pipefail
 in="${1:-}"
 out="${2:-}"
 category="${3:-ALL SONGS}"
-volume="${4:-0.12}"
+volume="${4:-0.17}"
+fade="${5:-0.6}"
 
 if [[ -z "$in" || -z "$out" ]]; then
-  echo "usage: bg-music.sh <input> <out> [category='ALL SONGS'] [volume=0.12]" >&2
+  echo "usage: bg-music.sh <input> <out> [category='ALL SONGS'] [volume=0.17] [fade=0.6]" >&2
   exit 2
 fi
 [[ -f "$in" ]] || { echo "bg-music: input not found: $in" >&2; exit 2; }
@@ -56,7 +57,7 @@ echo "bg-music: picked '$track_name' from '$track_mood' (vol=$volume)" >&2
 
 meta="$out.bgmeta"
 in_mtime="$(stat -f %m "$in" 2>/dev/null || stat -c %Y "$in")"
-sig="$in_mtime|$category|$volume|$track_name"
+sig="$in_mtime|$category|$volume|$fade|$track_name"
 
 if [[ -f "$out" && -f "$meta" && "$(cat "$meta")" == "$sig" ]]; then
   echo "bg-music: cache hit at $out" >&2
@@ -79,13 +80,13 @@ staging="$tmp/$(basename "$out")"
 if [[ "$has_audio" == "audio" ]]; then
   ffmpeg -y -hide_banner -loglevel error \
     -i "$in" -stream_loop -1 -i "$track" \
-    -filter_complex "[0:a]apad=whole_dur=${vdur}[spk];[1:a]volume=${volume},atrim=duration=${vdur}[bg];[spk][bg]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.97[a]" \
+    -filter_complex "[0:a]apad=whole_dur=${vdur}[spk];[1:a]volume=${volume},afade=t=in:st=0:d=${fade},atrim=duration=${vdur}[bg];[spk][bg]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.97[a]" \
     -map 0:v -map "[a]" -t "$vdur" \
     -c:v copy -c:a aac -b:a 192k -movflags +faststart "$staging"
 else
   ffmpeg -y -hide_banner -loglevel error \
     -i "$in" -stream_loop -1 -i "$track" \
-    -filter_complex "[1:a]volume=${volume},atrim=duration=${vdur},alimiter=limit=0.97[a]" \
+    -filter_complex "[1:a]volume=${volume},afade=t=in:st=0:d=${fade},atrim=duration=${vdur},alimiter=limit=0.97[a]" \
     -map 0:v -map "[a]" -t "$vdur" \
     -c:v copy -c:a aac -b:a 192k -movflags +faststart "$staging"
 fi

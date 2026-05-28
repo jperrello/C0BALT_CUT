@@ -28,8 +28,12 @@ if [[ -f "$out" && -f "$meta" ]]; then
   fi
 fi
 
+# --embed-metadata writes the title into the mp4 container; --print-to-file
+# also drops the raw title alongside, since merged-mp4 tags are unreliable.
 yt-dlp -f 'bv*+ba/b' --merge-output-format mp4 \
   -o "$dir/source.%(ext)s" \
+  --embed-metadata \
+  --print-to-file "%(title)s" "$dir/.title.txt" \
   --no-progress \
   "$url" >&2
 
@@ -44,9 +48,9 @@ fi
 probe_file="$dir/.probe.json"
 ffprobe -v error -print_format json -show_format -show_streams "$out" > "$probe_file"
 
-python3 - "$id" "$url" "$out" "$meta" "$probe_file" <<'PY'
-import json, sys
-id, url, out, meta, probe_file = sys.argv[1:6]
+python3 - "$id" "$url" "$out" "$meta" "$probe_file" "$dir/.title.txt" <<'PY'
+import json, os, sys
+id, url, out, meta, probe_file, title_file = sys.argv[1:7]
 with open(probe_file) as f:
     probe = json.load(f)
 v = next((s for s in probe["streams"] if s.get("codec_type") == "video"), {})
@@ -56,10 +60,15 @@ try:
     fps = float(num) / float(den) if float(den) else 0.0
 except Exception:
     fps = 0.0
+title = ""
+if os.path.exists(title_file):
+    title = open(title_file).read().strip()
+if not title:
+    title = probe.get("format", {}).get("tags", {}).get("title", "")
 data = {
     "id": id,
     "url": url,
-    "title": probe.get("format", {}).get("tags", {}).get("title", ""),
+    "title": title,
     "duration": float(probe.get("format", {}).get("duration", 0.0)),
     "fps": round(fps, 3),
     "width": int(v.get("width", 0)),
@@ -71,4 +80,4 @@ with open(meta, "w") as f:
 print(json.dumps(data, indent=2))
 PY
 
-rm -f "$probe_file"
+rm -f "$probe_file" "$dir/.title.txt"

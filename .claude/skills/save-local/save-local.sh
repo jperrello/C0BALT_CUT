@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# save-local: copy a rendered short into <OUTPUT_DIR>/<source-stem>/
+# save-local: copy a rendered short into <OUTPUT_DIR>/<subdir>/
+# subdir defaults to the source stem when not given.
 set -euo pipefail
 
 input="${1:-}"
 source="${2:-}"
 name="${3:-}"
+subdir="${4:-}"
 
 if [[ -z "$input" || -z "$source" ]]; then
-  echo "usage: save-local.sh <input> <source> [name]" >&2
+  echo "usage: save-local.sh <input> <source> [name] [subdir]" >&2
   exit 2
 fi
 if [[ ! -f "$input" ]]; then
@@ -22,8 +24,11 @@ if [[ -f "$root/.env" ]]; then
 fi
 outdir="${OUTPUT_DIR:-./output}"
 
-stem="$(basename "$source")"
-stem="${stem%.*}"
+stem="$subdir"
+if [[ -z "$stem" ]]; then
+  stem="$(basename "$source")"
+  stem="${stem%.*}"
+fi
 [[ -z "$name" ]] && name="$(basename "$input")"
 
 dest_dir="$outdir/$stem"

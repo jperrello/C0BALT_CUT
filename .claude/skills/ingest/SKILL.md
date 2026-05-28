@@ -34,10 +34,11 @@ URL hash, skips the download.
 ## How
 1. Compute `id` from URL (`sha1(url)[:10]`) if not given.
 2. `mkdir -p work/<id>`.
-3. `yt-dlp -f 'bv*+ba/b' --merge-output-format mp4 -o 'work/<id>/source.%(ext)s' <url>`
+3. `yt-dlp -f 'bv*+ba/b' --merge-output-format mp4 --embed-metadata --print-to-file '%(title)s' work/<id>/.title.txt -o 'work/<id>/source.%(ext)s' <url>`
 4. `ffprobe -v error -print_format json -show_format -show_streams work/<id>/source.mp4`
    → extract duration, fps, width, height.
-5. Write `ingest.json`.
+5. Title comes from yt-dlp's `.title.txt` (merged-mp4 container tags are unreliable and often empty); falls back to the container `title` tag.
+6. Write `ingest.json`.
 
 ## Invoke
 ```bash
