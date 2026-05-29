@@ -342,7 +342,8 @@ s=re.sub(r"[^a-z0-9]+","-",t.lower()).strip("-")[:80]
 print(s)' "$ingest_json" 2>/dev/null)"
 [[ -n "$slug" ]] || slug="$id"
 out_dir="$root/output/$slug"
-mkdir -p "$out_dir"
+# Folder is created lazily by save-local when a short is actually saved —
+# eagerly mkdir-ing here left empty husk folders behind on failed runs.
 
 run_span() {
   local i="$1"
@@ -359,6 +360,20 @@ run_span() {
 import json, sys
 s = json.load(open(sys.argv[1]))["shorts"][int(sys.argv[2])]
 print(s["t0"], s["t1"])' "$seg_final" "$i")
+
+  # Preserve pick-segments' semantic judgment (topic, rationale, suggested
+  # title) into a sidecar. This is the context that makes tone/irony legible —
+  # without it generate-title reads the clip's literal words and misses the
+  # speaker's intent. Carried forward to phase 3 titling.
+  local title_ctx="$dir/clip_${idx}.title-context.json"
+  python3 -c '
+import json, sys
+s = json.load(open(sys.argv[1]))["shorts"][int(sys.argv[2])]
+json.dump({
+    "topic": s.get("topic", ""),
+    "rationale": s.get("rationale", ""),
+    "title_suggestion": s.get("title_suggestion", ""),
+}, open(sys.argv[3], "w"), indent=2)' "$seg_final" "$i" "$title_ctx" || true
 
   log "[phase 2 / span $idx] editor pane $ed  range=[$t0 .. $t1]"
 
@@ -473,6 +488,9 @@ run_phase3_captions() {
   pane_new "$cp_pane" claude
   local vert; vert="$(cat "$dir/clip_${idx}.vert.path")"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
+  # Sidecar written by run_span (phase 2); deterministic path, may be absent
+  # on older runs — generate-title treats a missing file as no-context.
+  local title_ctx="$dir/clip_${idx}.title-context.json"
 
   log "[phase 3 / span $idx / captions] chunk-captions"
   local chunks="$dir/clip_${idx}.chunks.json"
@@ -490,7 +508,7 @@ run_phase3_captions() {
 
   log "[phase 3 / span $idx / captions] generate-title"
   local title_file="$dir/clip_${idx}.title.txt"
-  bash "$(skill generate-title)" "$ctx" "$ingest_json" "$title_file" --pane "$cp_pane" >/dev/null || {
+  bash "$(skill generate-title)" "$ctx" "$ingest_json" "$title_file" "$title_ctx" --pane "$cp_pane" >/dev/null || {
     log "[phase 3 / span $idx / captions] generate-title FAILED"
     echo "generate-title" > "$dir/clip_${idx}.fail.captions"; return 1
   }

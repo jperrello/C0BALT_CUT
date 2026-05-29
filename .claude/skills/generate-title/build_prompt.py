@@ -2,12 +2,20 @@
 import json, sys
 
 transcript_path, ingest_path = sys.argv[1:3]
+ctx_path = sys.argv[3] if len(sys.argv) > 3 else ""
 
 tx = json.load(open(transcript_path))
 try:
     ing = json.load(open(ingest_path))
 except Exception:
     ing = {}
+
+ctx = {}
+if ctx_path:
+    try:
+        ctx = json.load(open(ctx_path))
+    except Exception:
+        ctx = {}
 
 segs = tx.get("segments") or []
 if segs:
@@ -26,6 +34,47 @@ if src_uploader: meta_lines.append(f"Source uploader    : {src_uploader}")
 if src_url:      meta_lines.append(f"Source URL         : {src_url}")
 meta = "\n".join(meta_lines) or "(no source metadata)"
 
+topic = str(ctx.get("topic", "")).strip()
+rationale = str(ctx.get("rationale", "")).strip()
+suggestion = str(ctx.get("title_suggestion", "")).strip()
+ctx_lines = []
+if topic:      ctx_lines.append(f"Topic of this moment : {topic}")
+if rationale:  ctx_lines.append(f"Why it was picked    : {rationale}")
+if suggestion: ctx_lines.append(f"Candidate title      : {suggestion}")
+ctx_block = "\n".join(ctx_lines)
+
+step0 = ""
+if ctx_block:
+    step0 = """## Step 0 — read the register FIRST (do this before anything else)
+
+You are given UPSTREAM CONTEXT below: the topic this moment sits inside,
+why it was picked, and a candidate title — all written by a reader who saw
+the WHOLE talk, not just this clip. The clip transcript alone often hides
+the speaker's intent. A line read literally can be the exact opposite of
+what the speaker means.
+
+Before you title anything, decide the speaker's REGISTER from the context:
+- sincere — says what they mean
+- ironic / sarcastic — says the opposite of what they mean, often mocking
+- joking — playing for a laugh, exaggerating
+- provocative — overturning a common belief on purpose
+
+If the moment is ironic or joking, a literal restatement of the words is
+WRONG — it ships the joke as if it were earnest and reads as the pipeline
+not understanding the clip. Title the speaker's actual POINT (and, when it
+fits, the humor), not the surface words. Example failure: a speaker mocking
+abstraction-obsessed programmers by listing what he "refuses to think
+about" is NOT confessing — titling it "WHAT GREAT ENGINEERS REFUSE TO
+THINK ABOUT" inverts his meaning. The topic ("loves Go's simplicity")
+makes the real point obvious.
+
+Treat the candidate title as a starting point to sharpen, not gospel —
+keep it if it nails the point, replace it if you can hook harder. Use the
+context only to UNDERSTAND; never put topic/rationale wording in the title
+verbatim, and the cold-viewer test below still applies.
+
+"""
+
 print(f"""You are writing the TITLE CARD text for a short-form vertical video clip.
 
 The title pops in on the first ~2.5s over the clip's opening frames. It is
@@ -41,7 +90,7 @@ moment, reveal, fact, or contradiction inside the clip — without giving
 away the answer. Done right, a viewer who would have swiped past now
 holds still to find out what the title was pointing at.
 
-## Step 1 — analyze the clip
+{step0}## Step 1 — analyze the clip
 
 Read the transcript below. Decide if the clip has a single clear PAYOFF:
 - A reveal (a surprising number, fact, name, outcome)
@@ -129,6 +178,9 @@ ALL CAPS. Single line. No more than 7 words. No trailing punctuation.
 
 Source metadata:
 {meta}
+
+Upstream context (for your understanding — NEVER shown to the viewer):
+{ctx_block or "(none — judge tone from the clip transcript alone)"}
 
 Clip transcript:
 {body}
