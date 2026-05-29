@@ -1,6 +1,6 @@
 ---
 name: generate-title
-description: Generate a per-clip third-person engagement-driven title card text. Claude reads the clip's transcript plus the source video's ingest.json metadata, infers the subject, and emits a hook-driven ALL-CAPS title (<=7 words). Replaces pick-segments' title_suggestion.
+description: Generate a per-clip third-person engagement-driven title card text. Claude reads the clip's transcript, the source ingest.json metadata, and (optionally) pick-segments' per-span judgment (topic, rationale, suggested title) so it reads the speaker's register — sincere vs ironic vs joking — before titling. Emits a hook-driven ALL-CAPS title (<=7 words).
 allowed-tools: Bash
 user-invocable: true
 ---
@@ -13,13 +13,22 @@ moment, ALL CAPS, ≤7 words. Designed for the title-transition skill.
 ## Invoke
 
 ```
-.claude/skills/generate-title/generate-title.sh <clip_transcript.json> <ingest.json> <out.txt>
+.claude/skills/generate-title/generate-title.sh <clip_transcript.json> <ingest.json> <out.txt> [title-context.json]
 ```
 
 - `clip_transcript`: clip-local transcript with `words[]` and/or `segments[]`
 - `ingest`: the source video's ingest.json (provides title, uploader, url —
   helps name the subject when the transcript doesn't say it explicitly)
 - `out`: text file with the title (single line, ALL CAPS, ≤7 words)
+- `title-context` (optional): pick-segments' per-span judgment —
+  `{topic, rationale, title_suggestion}` — sliced out of `segments.json` by
+  the orchestrator. The clip-local transcript alone can't carry the
+  speaker's register, so a line read literally can invert the meaning (an
+  ironic "what he refuses to think about" titled as a sincere confession).
+  When present, the model reads tone from this context FIRST (Step 0:
+  sincere / ironic / joking / provocative) and titles the actual point, not
+  the surface words. Never shown to the viewer; omitting it falls back to
+  the old clip-only behavior.
 
 ## Output
 
