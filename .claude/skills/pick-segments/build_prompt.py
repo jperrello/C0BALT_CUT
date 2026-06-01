@@ -80,10 +80,10 @@ Transcript (timestamped lines, seconds):
 Pick {n} non-overlapping spans, each {dmin:.0f}-{dmax:.0f} seconds long, that would work as standalone shorts. Avoid mid-sentence cuts.
 
 SCROLL-STOP HOOK (highest priority — shorts that don't grab in the first 1-2s are dead):
-The OPENING WORDS of each span are what a viewer sees first. Score each pick on:
+You are picking the spans a viewer is LEAST likely to scroll past and MOST likely to finish. The OPENING WORDS of each span are what a viewer sees first. Score each pick on:
   - hook_score (0-10): does the first 1-2s plant a curiosity question OR land a striking visual/factual claim? Reward concrete nouns, numbers, named subjects, surprising statements, direct questions. Punish vague setup.
   - structure_score (0-10): does the span have hook → foreshadow → payoff? Is there but/therefore causality between beats (not just "and then")? Does it open a curiosity loop that resolves by the end?
-  - overall_score (0-10): your holistic rank — would you stop scrolling?
+  - overall_score (0-10): your holistic rank — would you stop scrolling AND watch to the end? Weigh what tends to make a span engaging: high vocal energy/affect (excitement, laughter, emphasis), lively back-and-forth exchange, and concrete/specific nouns and real stakes. Read the RMS sparkline above as an affect cue — favor spans sitting over energy peaks (laughter, raised voices), not flat valleys. These are examples of engagement, not a checklist: a gripping span missing some still ranks high.
 
 HARD REJECT — do NOT pick spans whose first transcript word is filler:
   so, and, but, um, uh, like, well, okay, ok, basically, actually, anyway, you know, I mean, I think, I guess, kind of, sort of
