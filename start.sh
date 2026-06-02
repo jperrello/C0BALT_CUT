@@ -468,12 +468,12 @@ print(s["t0"], s["t1"])' "$span_out")
     log "[phase 2 / span $idx] verify-bookends skill missing — skipping (will be wired when shorts-zda lands)"
   fi
 
-  # --- fit-vertical ------------------------------------------------------
+  # --- fill-vertical -----------------------------------------------------
   local vert="$dir/clip_${idx}.vert.mp4"
-  log "[phase 2 / span $idx] fit-vertical"
-  bash "$(skill fit-vertical)" "$clip_pre" "$vert" >/dev/null || {
-    log "[phase 2 / span $idx] fit-vertical FAILED"
-    echo "fit-vertical" > "$dir/clip_${idx}.fail"; return 1
+  log "[phase 2 / span $idx] fill-vertical"
+  bash "$(skill fill-vertical)" "$clip_pre" "$vert" >/dev/null || {
+    log "[phase 2 / span $idx] fill-vertical FAILED"
+    echo "fill-vertical" > "$dir/clip_${idx}.fail"; return 1
   }
 
   # Stash paths for downstream phases
@@ -499,9 +499,20 @@ run_phase3_captions() {
     echo "chunk-captions" > "$dir/clip_${idx}.fail.captions"; return 1
   }
 
+  # broll-pick: Claude anchors -> mcptube/yt-dlp sourced cutaways -> broll_plan.json
+  log "[phase 3 / span $idx / captions] broll-pick"
+  local broll_plan="$dir/clip_${idx}.broll_plan.json"
+  bash "$(skill broll-pick)" "$ctx" "$chunks" "$ingest_json" "$broll_plan" --pane "$cp_pane" >/dev/null \
+    || echo '{"picks":[],"ingested_video_ids":[]}' > "$broll_plan"
+
+  # broll-composite: full-frame hard-cut cutaways onto the vertical clip (captions burn on top)
+  log "[phase 3 / span $idx / captions] broll-composite"
+  local brolled="$dir/clip_${idx}.broll.mp4"
+  bash "$(skill broll-composite)" "$vert" "$broll_plan" "$brolled" >/dev/null || cp "$vert" "$brolled"
+
   log "[phase 3 / span $idx / captions] burn-subtitles"
   local sub="$dir/clip_${idx}.sub.mp4"
-  bash "$(skill burn-subtitles)" "$vert" "$chunks" "$sub" chunks >/dev/null || {
+  bash "$(skill burn-subtitles)" "$brolled" "$chunks" "$sub" chunks >/dev/null || {
     log "[phase 3 / span $idx / captions] burn-subtitles FAILED"
     echo "burn-subtitles" > "$dir/clip_${idx}.fail.captions"; return 1
   }
@@ -648,6 +659,17 @@ for ((i = 0; i < count; i++)); do
 done
 log "[phase 4] ${#p4_pids[@]} completion pane(s) running"
 for pid in "${p4_pids[@]}"; do wait "$pid"; done
+
+# ---- broll-cleanup --------------------------------------------------------
+# Runs ONCE at end of run: evicts only this run's mcptube b-roll ingests +
+# local broll/*.mp4 cache. broll_plan.json metadata persists for editors.
+shopt -s nullglob
+broll_plans=("$dir"/clip_*.broll_plan.json)
+shopt -u nullglob
+if [[ ${#broll_plans[@]} -gt 0 ]]; then
+  log "[cleanup] broll-cleanup (${#broll_plans[@]} plan(s))"
+  bash "$(skill broll-cleanup)" "${broll_plans[@]}" >/dev/null 2>&1 || true
+fi
 
 # ---- final summary --------------------------------------------------------
 saved=0

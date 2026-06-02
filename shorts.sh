@@ -119,14 +119,23 @@ print(s["t0"], s["t1"])' "$segments" "$i")
     fi
 
     vert="$dir/clip_$idx.vert.mp4"
-    bash "$(skill fit-vertical)" "$clip" "$vert" >/dev/null
+    bash "$(skill fill-vertical)" "$clip" "$vert" >/dev/null
 
     # chunk-captions: clip transcript -> phrase chunks (kills the rolling scroll)
+    # (moved ahead of broll-pick so cutaway windows snap to whole chunk boundaries)
     chunks="$dir/clip_$idx.chunks.json"
     bash "$(skill chunk-captions)" "$ctx" "$chunks" >/dev/null
 
+    # broll-pick: Claude anchors -> mcptube/yt-dlp sourced cutaways -> broll_plan.json
+    broll_plan="$dir/clip_$idx.broll_plan.json"
+    bash "$(skill broll-pick)" "$ctx" "$chunks" "$ingest_json" "$broll_plan" >/dev/null || echo '{"picks":[],"ingested_video_ids":[]}' > "$broll_plan"
+
+    # broll-composite: full-frame hard-cut cutaways onto the vertical clip (captions burn on top)
+    brolled="$dir/clip_$idx.broll.mp4"
+    bash "$(skill broll-composite)" "$vert" "$broll_plan" "$brolled" >/dev/null || cp "$vert" "$brolled"
+
     sub="$dir/clip_$idx.sub.mp4"
-    bash "$(skill burn-subtitles)" "$vert" "$chunks" "$sub" chunks >/dev/null
+    bash "$(skill burn-subtitles)" "$brolled" "$chunks" "$sub" chunks >/dev/null
 
     # generate-title: per-clip third-person ALL-CAPS hook title
     title_file="$dir/clip_$idx.title.txt"
@@ -174,6 +183,16 @@ print(s["t0"], s["t1"])' "$segments" "$i")
     echo "short $idx: skipped (rc=$rc)" >&2
   fi
 done
+
+# broll-cleanup: runs ONCE at end of run — evicts only this run's mcptube b-roll
+# ingests + local broll/*.mp4 cache. broll_plan.json metadata persists for editors.
+shopt -s nullglob
+plans=("$dir"/clip_*.broll_plan.json)
+shopt -u nullglob
+if [[ ${#plans[@]} -gt 0 ]]; then
+  step "broll-cleanup"
+  bash "$(skill broll-cleanup)" "${plans[@]}" >/dev/null 2>&1 || true
+fi
 
 echo
 echo "shorts: done — $saved/$count short(s) saved under ./output/ ($skipped dropped by verify-bookends)" >&2

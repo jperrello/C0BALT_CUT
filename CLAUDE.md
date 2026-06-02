@@ -72,8 +72,11 @@ source video
         → rebase
         → trim-filler + cut-filler     (Claude cuts filler / trail-offs / digressive asides)
         → tighten-pace                 (collapse remaining inter-word silences >0.25s)
-        → fit-vertical                 (1080x1920, blurred bars top/bottom — NO speaker-tracking crop)
-        → chunk-captions + burn-subtitles (word-karaoke PNG overlay sequence)
+        → fill-vertical                (1080x1920 punch-in crop, fills the frame — NO blur bars, NO letterbox)
+        → chunk-captions               (transcript → chunks.json; moved AHEAD of b-roll so cutaway windows snap to chunk boundaries)
+        → broll-pick                   (Claude anchors → mcptube/yt-dlp-sourced cutaways → broll_plan.json)
+        → broll-composite              (full-frame hard-cut cutaways onto the vertical clip; podcast audio continuous)
+        → burn-subtitles               (word-karaoke PNG overlay, burned ON TOP of the b-roll)
         → generate-title + title-transition (silent animated intro card)
         → source-credit                (persistent "Original video: <title>" credit, bottom third)
         → loudnorm                     (two-pass to -14 LUFS)
@@ -81,16 +84,22 @@ source video
         → pick-mood + bg-music         (Claude picks ./songs/<mood>/ from clip transcript; bed at -18dB, last 5 picks blacklisted via ./songs/.recent)
         → qc-clip                      (ffprobe duration + size gate)
         → save-local                   (./output/<source>/short_NN.mp4)
+  └─ broll-cleanup     (ONCE at end of run: evict only this run's mcptube b-roll ingests + local broll/*.mp4 cache; broll_plan.json persists)
 ```
 
 **Hard rules for any "rerun the pipeline" / full-pipeline request:**
-- Use `fit-vertical`, NOT `reframe-vertical`. The speaker-tracking crop is currently disabled in the canonical chain; the blurred-bars 9:16 reframe is the source of truth.
+- Use `fill-vertical` for the 9:16 reframe — punch-in crop that FILLS the frame (face ~45% height, lip-activity speaker pick, saliency crop for no-face shots). NEVER letterbox, NO blur bars. Both `fit-vertical` and `reframe-vertical` are retired/deleted.
+- `chunk-captions` runs BEFORE `broll-pick` (b-roll windows snap to whole caption-chunk boundaries — no mid-word cuts).
+- `broll-composite` runs AFTER `broll-pick` and BEFORE `burn-subtitles` — captions must burn OVER the cutaways, never under them.
+- B-roll cutaways are full-frame hard cuts (entire 1080×1920 replaced, scale-cover + crop, no bars, no crossfade/zoom). Podcast audio is continuous (stream-copied); b-roll audio is always dropped. Bottom-bar/letterbox b-roll = regression.
+- `broll-pick` discovery uses the mcptube-bundled `yt-dlp` ytsearch, NOT `mcptube discover` (the latter needs an LLM API key the stack forbids). Vision verify via `claude -p`; total vision calls bounded by `BROLL_VISION_CAP` (default 10).
+- `broll-cleanup` runs exactly ONCE at end of run, evicting only `video_id`s in each `broll_plan.json`'s `ingested_video_ids` — never the podcast source. It must never modify or delete `broll_plan.json`.
 - `title-transition` is mandatory and runs AFTER `burn-subtitles`, BEFORE `loudnorm`. The title text comes from `generate-title`.
 - `bookend-trim` runs AFTER `verify-coherence` and BEFORE `cut-clip`. It snaps each span's `[t0, t1]` to a clean sentence boundary so shorts don't end mid-sentence.
 - `like-subscribe-overlay` runs AFTER `loudnorm` and BEFORE `bg-music`. It overlays an animated CTA on the last ~4s of the clip.
 - `source-credit` runs AFTER `title-transition` and BEFORE `loudnorm`. It bakes a persistent "Original video: <title>" credit in the bottom third (y≈70% of frame), positioned to not overlap the CTA banner (lower ~12%). Title is read from `work/<id>/ingest.json`.
 - If `shorts.sh` does not invoke every skill above in the listed order, `shorts.sh` is wrong — fix the entrypoint, do not silently skip skills.
-- Verify after a run: every saved `output/<source>/short_NN.mp4` must be 1080x1920, have a title card on the first ~2.5s, AND have a CTA card on the last ~4s. If any is missing, the pipeline regressed.
+- Verify after a run: every saved `output/<source>/short_NN.mp4` must be 1080x1920 (full-bleed punch-in, NO blur bars), have a title card on the first ~2.5s, AND have a CTA card on the last ~4s. If any is missing, the pipeline regressed.
 
 ## Conventions
 
