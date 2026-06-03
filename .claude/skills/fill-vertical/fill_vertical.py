@@ -9,6 +9,10 @@ MODEL = os.path.join(HERE, "models", "face_landmarker.task")
 
 # inner-lip + face-extent landmark indices (468/478 mesh)
 UP, LO, TOP, CHIN = 13, 14, 10, 152
+# stable, well-spread indices used to build a scale/position-invariant identity
+# signature (face shape) so the same person can be matched across shots.
+SIG = [33, 133, 362, 263, 1, 4, 168, 61, 291, 199, 152, 10, 234, 454, 70, 300]
+SPEAK_VAR = 4e-4   # lip-openness variance above this == actively talking
 
 
 def probe(path):
@@ -64,12 +68,21 @@ def faces(fl, img):
     for lm in res.face_landmarks:
         xs = [p.x for p in lm]
         ys = [p.y for p in lm]
+        x0, y0 = min(xs), min(ys)
+        fw = (max(xs) - x0) or 1e-6
         fh = abs(lm[CHIN].y - lm[TOP].y) or 1e-6
+        # identity signature: each SIG landmark's position within the face bbox,
+        # invariant to where/how big the face is in frame.
+        sig = []
+        for j in SIG:
+            sig.append((lm[j].x - x0) / fw)
+            sig.append((lm[j].y - y0) / (max(ys) - y0 or 1e-6))
         out.append({
             "cx": (min(xs) + max(xs)) / 2, "cy": (min(ys) + max(ys)) / 2,
-            "w": max(xs) - min(xs), "h": max(ys) - min(ys),
+            "w": max(xs) - x0, "h": max(ys) - y0,
             "eye": lm[TOP].y + 0.42 * fh,       # ~eyeline, normalized
             "open": abs(lm[LO].y - lm[UP].y) / fh,
+            "sig": np.array(sig),
         })
     return out
 
@@ -92,24 +105,45 @@ def track(samples):
     return tracks
 
 
-def pick(tracks):
-    # speaker = most lip-activity (variance of openness); tie -> biggest+central
-    def med(tr, k):
-        return float(np.median([f[k] for f in tr]))
-    scored = []
-    for tr in tracks:
-        var = float(np.var([f["open"] for f in tr])) if len(tr) > 1 else 0.0
-        scored.append((var, tr))
+def med(tr, k):
+    return float(np.median([f[k] for f in tr]))
+
+
+def trackvar(tr):
+    return float(np.var([f["open"] for f in tr])) if len(tr) > 1 else 0.0
+
+
+def trsig(tr):
+    return np.median(np.stack([f["sig"] for f in tr]), axis=0)
+
+
+def pick(tracks, dom=None):
+    # speaker = most lip-activity (variance of openness). If a dominant-identity
+    # signature is known (the clip's main storyteller), prefer the track that
+    # matches it AND is talking, so we don't lock onto a secondary speaker.
+    scored = [(trackvar(tr), tr) for tr in tracks]
     var_max = max(v for v, _ in scored)
+    if dom is not None:
+        near = [(v, tr) for v, tr in scored
+                if float(np.linalg.norm(trsig(tr) - dom)) < SIG_THRESH]
+        talking = [(v, tr) for v, tr in near if v >= SPEAK_VAR]
+        if talking:
+            return max(talking, key=lambda s: s[0])[1]
+        if near and var_max < SPEAK_VAR:   # nobody clearly talking -> stay on main
+            return max(near, key=lambda s: med(s[1], "h"))[1]
     if var_max < 1e-5:                     # no measurable lip motion -> central+big
-        def central(tr):
-            return med(tr, "h") - abs(med(tr, "cx") - 0.5)
-        return max(tracks, key=central)
+        return max(tracks, key=lambda tr: med(tr, "h") - abs(med(tr, "cx") - 0.5))
     return max(scored, key=lambda s: s[0])[1]
 
 
 def rep(tr):
-    return {k: float(np.median([f[k] for f in tr])) for k in ("cx", "cy", "w", "h", "eye")}
+    r = {k: float(np.median([f[k] for f in tr])) for k in ("cx", "cy", "w", "h", "eye")}
+    r["sig"] = trsig(tr)
+    r["var"] = trackvar(tr)
+    return r
+
+
+SIG_THRESH = 0.55   # euclidean distance under which two face signatures are "same person"
 
 
 def even(v):
@@ -161,7 +195,7 @@ def main():
     ap.add_argument("--face_frac", type=float, default=0.45)
     ap.add_argument("--max_zoom", type=float, default=2.0)
     ap.add_argument("--scene_thresh", type=float, default=0.4)
-    ap.add_argument("--samples", type=int, default=5)
+    ap.add_argument("--samples", type=int, default=7)
     a = ap.parse_args()
 
     tw, th = (int(x) for x in a.target.split("x"))
@@ -172,8 +206,9 @@ def main():
         base_options=python.BaseOptions(model_asset_path=MODEL),
         running_mode=vision.RunningMode.IMAGE, num_faces=5))
 
-    boxes = []
+    # PASS 1: sample + detect + track every shot (keep frames for pass 2).
     td = tempfile.mkdtemp()
+    shotdata = []
     for si, (a0, a1) in enumerate(shots):
         n = max(2, a.samples if (a1 - a0) > 0.5 else 2)
         ts = [a0 + (a1 - a0) * (i + 0.5) / n for i in range(n)]
@@ -184,10 +219,42 @@ def main():
                 continue
             imgs.append(img)
             dets.append(faces(fl, img))
-        tracks = track(dets)
+        shotdata.append((a0, a1, track(dets), imgs))
+
+    # identify the dominant speaker: cluster every track's face signature across
+    # all shots, weighted by shot duration; the longest-present identity is the
+    # storyteller. Used to avoid hero-framing secondary speakers / listeners.
+    clusters = []
+    for a0, a1, tracks, _ in shotdata:
+        for tr in tracks:
+            s = trsig(tr)
+            best, bd = None, SIG_THRESH
+            for c in clusters:
+                d = float(np.linalg.norm(s - c["sig"]))
+                if d < bd:
+                    best, bd = c, d
+            if best is None:
+                clusters.append({"sig": s.copy(), "sigs": [s], "dur": a1 - a0})
+            else:
+                best["sigs"].append(s)
+                best["dur"] += a1 - a0
+                best["sig"] = np.mean(np.stack(best["sigs"]), axis=0)
+    dom = max(clusters, key=lambda c: c["dur"])["sig"] if clusters else None
+    multi = len(clusters) >= 2   # only de-emphasize "others" when >1 identity exists
+
+    # PASS 2: per shot, pick the speaker (dominant-biased) and frame it. A
+    # non-dominant face that isn't talking is a listener reaction shot -> frame
+    # it looser so the short doesn't dwell hero-framed on the wrong person.
+    boxes = []
+    for si, (a0, a1, tracks, imgs) in enumerate(shotdata):
         if tracks:
-            box = facebox(rep(pick(tracks)), sw, sh, tw, th, a.face_frac, a.max_zoom)
-            kind = "face"
+            tr = pick(tracks, dom)
+            r = rep(tr)
+            listener = multi and r["var"] < SPEAK_VAR and \
+                float(np.linalg.norm(r["sig"] - dom)) >= SIG_THRESH
+            ff = a.face_frac * 0.66 if listener else a.face_frac
+            box = facebox(r, sw, sh, tw, th, ff, a.max_zoom)
+            kind = "listener" if listener else "face"
         else:
             box = saliency(imgs, sw, sh, tw, th) if imgs else (
                 even(min(sh, sw * tw / th)), even(min(sh, sw / (tw / th))),

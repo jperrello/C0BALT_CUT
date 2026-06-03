@@ -1,6 +1,6 @@
 ---
 name: fill-vertical
-description: Reframe a horizontal (16:9) clip to 9:16 (1080x1920) by punching in to FILL the frame — never letterbox, no blur bars. Detects scene cuts and computes ONE static crop box per shot. On multi-face shots it picks the speaker by lip-activity (mouth-openness variance across sampled frames); on no-face shots it crops toward the OpenCV-saliency centroid. Faces are framed ~45% of frame height with the eyeline on the upper third, capped at ~2x upscale. Replaces fit-vertical in the canonical chain.
+description: Reframe a horizontal (16:9) clip to 9:16 (1080x1920) by punching in to FILL the frame — never letterbox, no blur bars. Detects scene cuts and computes ONE static crop box per shot. Clusters face signatures across all shots to find the dominant speaker (storyteller); on multi-face shots it picks the speaker by lip-activity biased toward that identity; on no-face shots it crops toward the OpenCV-saliency centroid. A non-speaking reaction/listener shot is framed LOOSER so the short never dwells hero-framed on the wrong person. Faces are framed ~45% of frame height with the eyeline on the upper third, capped at ~2x upscale. Replaces fit-vertical in the canonical chain.
 ---
 
 # fill-vertical

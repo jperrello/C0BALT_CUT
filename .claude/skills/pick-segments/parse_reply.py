@@ -59,14 +59,44 @@ def starts_with_filler(t0):
 
 shorts = []
 seen = []
+def norm_cuts(sh):
+    # validate/normalize the cuts list: in-bounds, ordered, non-overlapping.
+    # falls back to a single [t0,t1] cut when cuts are missing/unusable.
+    raw = sh.get("cuts")
+    cuts = []
+    if isinstance(raw, list):
+        for c in raw:
+            try:
+                a, b = float(c[0]), float(c[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if b - a < 0.5:
+                continue
+            if duration and (a < 0 or b > duration + 1):
+                continue
+            cuts.append([a, b])
+    if not cuts:
+        cuts = [[float(sh["t0"]), float(sh["t1"])]]
+    cuts.sort(key=lambda c: c[0])
+    merged = [cuts[0]]
+    for a, b in cuts[1:]:
+        if a >= merged[-1][1]:        # drop overlapping cuts, keep chronological
+            merged.append([a, b])
+    return [[round(a, 2), round(b, 2)] for a, b in merged]
+
+
 for sh in data.get("shorts", []):
-    t0 = float(sh["t0"])
-    t1 = float(sh["t1"])
+    try:
+        cuts = norm_cuts(sh)
+    except (KeyError, TypeError, ValueError):
+        continue
+    t0 = cuts[0][0]
+    t1 = cuts[-1][1]
     if t1 <= t0:
         continue
     if duration and (t0 < 0 or t1 > duration + 1):
         continue
-    dur = t1 - t0
+    dur = sum(b - a for a, b in cuts)   # final runtime = sum of cut lengths
     if dur < dmin - 0.5 or dur > dmax + 0.5:
         continue
     if any(not (t1 <= a or t0 >= b) for a, b in seen):
@@ -82,6 +112,7 @@ for sh in data.get("shorts", []):
     item = {
         "t0": round(t0, 2),
         "t1": round(t1, 2),
+        "cuts": cuts,
         "rationale": sh.get("rationale", "")[:280],
         "title_suggestion": sh.get("title_suggestion", "")[:120],
         "hook_score": float(sh.get("hook_score", 0) or 0),

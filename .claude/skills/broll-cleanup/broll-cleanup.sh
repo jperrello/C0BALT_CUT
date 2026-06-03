@@ -52,7 +52,9 @@ try:
     if ps and ps[0].get("clip_path"): print(os.path.dirname(ps[0]["clip_path"]))
 except Exception: pass' "$plan")"
   if [[ -n "$brdir" && -d "$brdir" && "$(basename "$brdir")" == "broll" ]]; then
-    rm -f "$brdir"/*.mp4 2>/dev/null || true
+    # match every cached cutaway, not just *.mp4: yt-dlp merges often land as
+    # <slot>.mp4.webm / .mkv, so a bare *.mp4 glob leaks the real files.
+    rm -f "$brdir"/*broll_* 2>/dev/null || true
     rmdir "$brdir" 2>/dev/null || true
   fi
 done

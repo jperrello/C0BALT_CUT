@@ -1,6 +1,6 @@
 ---
 name: broll-pick
-description: Claude picks 3-5 strongest visualizable anchors from a clip transcript and sources full-bleed B-roll cutaways for them via keyless yt-dlp YouTube search + mcptube frame-sampling + Claude vision verify. Emits broll_plan.json with per-cutaway placement [t0,t1] and source metadata. Windows snap to whole chunk-captions boundaries; vision calls capped by BROLL_VISION_CAP.
+description: Claude picks CONTEXTUAL/scene-level anchors from a clip transcript (literal objects, establishing shots, evocative concept footage matched to the story's tone — not just keyword nouns) and sources full-bleed B-roll cutaways via keyless yt-dlp YouTube search + mcptube frame-sampling + Claude vision verify. The verify step gets the spoken context and rejects literal-but-wrong matches (e.g. a cat laser toy for a tense "red dot" beat). Aims dense (~6-10 windows). Emits broll_plan.json with per-cutaway placement [t0,t1] and source metadata; clip files are namespaced per-clip. Windows snap to whole chunk-captions boundaries; vision calls capped by BROLL_VISION_CAP (default 16).
 allowed-tools: Bash
 user-invocable: true
 ---

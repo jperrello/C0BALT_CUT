@@ -400,18 +400,40 @@ import json, sys
 s = json.load(open(sys.argv[1]))["shorts"][0]
 print(s["t0"], s["t1"])' "$span_out")
 
-  # --- cut-clip + rebase (bash) ------------------------------------------
+  # --- cut-clip + rebase (bash); multi-cut spans are assembled here ------
   local clip="$dir/clip_${idx}.mp4"
-  log "[phase 2 / span $idx] cut-clip"
-  bash "$(skill cut-clip)" "$src" "$t0" "$t1" "$clip" true || {
-    log "[phase 2 / span $idx] cut-clip FAILED"
-    echo "cut-clip" > "$dir/clip_${idx}.fail"; return 1
-  }
   local ctx="$dir/clip_${idx}.transcript.json"
-  python3 "$root/rebase.py" "$tx" "$t0" "$t1" "$ctx" "$clip" || {
-    log "[phase 2 / span $idx] rebase FAILED"
-    echo "rebase" > "$dir/clip_${idx}.fail"; return 1
-  }
+  local cuts_json ncuts
+  cuts_json="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1]))["shorts"][0]; print(json.dumps(s.get("cuts") or [[s["t0"],s["t1"]]]))' "$span_out")"
+  ncuts="$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])))' "$cuts_json")"
+  if [[ "$ncuts" -gt 1 ]]; then
+    log "[phase 2 / span $idx] cut-clip x$ncuts + concat (multi-cut story)"
+    local listf="$dir/clip_${idx}.cuts.txt"; : > "$listf"; local j=0
+    while IFS=$'\t' read -r a b; do
+      local piece="$dir/clip_${idx}.cut_$(printf '%02d' "$j").mp4"
+      # </dev/null: ffmpeg inside cut-clip otherwise slurps this loop's piped
+      # stdin and the read consumes only the first cut (multi-cut -> 1 piece).
+      bash "$(skill cut-clip)" "$src" "$a" "$b" "$piece" true </dev/null || {
+        log "[phase 2 / span $idx] cut-clip piece FAILED"; echo "cut-clip" > "$dir/clip_${idx}.fail"; return 1; }
+      # concat-demuxer resolves 'file' paths relative to the list file's dir
+      echo "file '$(basename "$piece")'" >> "$listf"; j=$((j + 1))
+    done < <(python3 -c 'import json,sys; [print(f"{a}\t{b}") for a,b in json.loads(sys.argv[1])]' "$cuts_json")
+    ffmpeg -y -hide_banner -loglevel error -f concat -safe 0 -i "$listf" -c copy "$clip" \
+      || ffmpeg -y -hide_banner -loglevel error -f concat -safe 0 -i "$listf" "$clip" || {
+        log "[phase 2 / span $idx] concat FAILED"; echo "concat" > "$dir/clip_${idx}.fail"; return 1; }
+    python3 "$root/assemble.py" "$tx" "$cuts_json" "$ctx" "$clip" || {
+      log "[phase 2 / span $idx] assemble FAILED"; echo "assemble" > "$dir/clip_${idx}.fail"; return 1; }
+  else
+    log "[phase 2 / span $idx] cut-clip"
+    bash "$(skill cut-clip)" "$src" "$t0" "$t1" "$clip" true || {
+      log "[phase 2 / span $idx] cut-clip FAILED"
+      echo "cut-clip" > "$dir/clip_${idx}.fail"; return 1
+    }
+    python3 "$root/rebase.py" "$tx" "$t0" "$t1" "$ctx" "$clip" || {
+      log "[phase 2 / span $idx] rebase FAILED"
+      echo "rebase" > "$dir/clip_${idx}.fail"; return 1
+    }
+  fi
 
   # --- trim-filler + cut-filler ------------------------------------------
   local keeps="$dir/clip_${idx}.keeps.json"

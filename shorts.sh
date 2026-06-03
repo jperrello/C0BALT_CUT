@@ -73,14 +73,37 @@ import json,sys
 s=json.load(open(sys.argv[1]))["shorts"][int(sys.argv[2])]
 print(s["t0"], s["t1"])' "$segments" "$i")
 
-    echo ">>> short $idx  [$t0 - $t1]" >&2
+    # cuts: 1-3 source ranges assembled into one short (multi-cut story).
+    cuts_json="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1]))["shorts"][int(sys.argv[2])]; print(json.dumps(s.get("cuts") or [[s["t0"],s["t1"]]]))' "$segments" "$i")"
+    ncuts="$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])))' "$cuts_json")"
+
+    echo ">>> short $idx  [$t0 - $t1]  cuts=${ncuts}" >&2
 
     clip="$dir/clip_$idx.mp4"
-    bash "$(skill cut-clip)" "$src" "$t0" "$t1" "$clip" true
-
-    # rebase transcript into clip-local time
     ctx="$dir/clip_$idx.transcript.json"
-    python3 "$root/rebase.py" "$transcript" "$t0" "$t1" "$ctx" "$clip"
+    if [[ "$ncuts" -gt 1 ]]; then
+      # cut each piece precisely (reencode) then concat into one clip
+      listf="$dir/clip_$idx.cuts.txt"; : > "$listf"
+      j=0
+      while IFS=$'\t' read -r a b; do
+        piece="$dir/clip_${idx}.cut_$(printf '%02d' "$j").mp4"
+        # </dev/null: ffmpeg inside cut-clip otherwise slurps this loop's piped
+        # stdin and the read consumes only the first cut (multi-cut -> 1 piece).
+        bash "$(skill cut-clip)" "$src" "$a" "$b" "$piece" true </dev/null
+        # concat-demuxer resolves 'file' paths relative to the LIST file's dir
+        # (which is $dir), so write basenames — not $dir-prefixed paths.
+        echo "file '$(basename "$piece")'" >> "$listf"
+        j=$((j + 1))
+      done < <(python3 -c '
+import json,sys
+for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
+      ffmpeg -y -hide_banner -loglevel error -f concat -safe 0 -i "$listf" -c copy "$clip" \
+        || ffmpeg -y -hide_banner -loglevel error -f concat -safe 0 -i "$listf" "$clip"
+      python3 "$root/assemble.py" "$transcript" "$cuts_json" "$ctx" "$clip"
+    else
+      bash "$(skill cut-clip)" "$src" "$t0" "$t1" "$clip" true
+      python3 "$root/rebase.py" "$transcript" "$t0" "$t1" "$ctx" "$clip"
+    fi
 
     # trim-filler: Claude marks filler / trail-offs / digressive asides for removal
     keeps="$dir/clip_$idx.keeps.json"

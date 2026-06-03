@@ -44,6 +44,14 @@ for i, s in enumerate(segs):
     d1 = nt1 - s["t1"]
     s["t0"] = round(nt0, 2)
     s["t1"] = round(nt1, 2)
+    # keep the multi-cut envelope consistent: snap the first cut's start and the
+    # last cut's end to the new boundaries (only when the cut stays valid).
+    cuts = s.get("cuts")
+    if isinstance(cuts, list) and cuts:
+        if nt0 < cuts[0][1]:
+            cuts[0][0] = round(nt0, 2)
+        if nt1 > cuts[-1][0]:
+            cuts[-1][1] = round(nt1, 2)
     s["bookend_note"] = f"Δt0={d0:+.2f} Δt1={d1:+.2f}; {str(a.get('note',''))[:120]}"
     out.append(s)
 

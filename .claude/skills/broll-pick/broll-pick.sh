@@ -24,8 +24,13 @@ done
 here="$(cd "$(dirname "$0")" && pwd)"
 MT="${MCPTUBE_BIN:-$HOME/.local/pipx/venvs/mcptube/bin/mcptube}"
 YTDLP="${MCPTUBE_YTDLP:-$HOME/.local/pipx/venvs/mcptube/bin/yt-dlp}"
-CAP="${BROLL_VISION_CAP:-10}"
+CAP="${BROLL_VISION_CAP:-16}"
 broll_dir="$(cd "$(dirname "$ingest")" && pwd)/broll"
+# per-clip slot prefix: the broll dir is shared across every span of a run, so
+# filenames MUST be namespaced by the plan they belong to or one span's footage
+# overwrites another's slot (cross-span contamination — shorts-6u4).
+slot_base="$(basename "$out")"; slot_base="${slot_base%.broll_plan.json}"
+[[ -n "$slot_base" && "$slot_base" != "$(basename "$out")" ]] || slot_base="broll"
 
 mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
 chunks_m="$(mtime "$chunks")"
@@ -102,7 +107,7 @@ print(' '.join(f'{t:.2f}' for t in ts))")
 
 # try a single candidate for a window+query. echoes "s0 s1 vid title url dur tsbest" on accept.
 try_candidate() {
-  local topic="$1" query="$2" winlen="$3"
+  local topic="$1" query="$2" winlen="$3" context="${4:-}"
   # keyless discovery
   local cands
   cands="$("$YTDLP" "ytsearch4:$query" --flat-playlist \
@@ -120,7 +125,7 @@ try_candidate() {
     local gridinfo grid tsline
     gridinfo="$(sample_grid "$cid" "$cdur" "$tmp/grid_${cid}.jpg")" || { continue; }
     grid="${gridinfo%%	*}"; tsline="${gridinfo##*	}"
-    python3 "$here/verify_prompt.py" "$topic" "$query" "$grid" "$tsline" > "$tmp/vp.txt"
+    python3 "$here/verify_prompt.py" "$topic" "$query" "$grid" "$tsline" "$context" > "$tmp/vp.txt"
     echo $(( $(cat "$vcount") + 1 )) > "$vcount"
     run_claude_step "broll-verify-$cid" "$tmp/vp.txt" "$tmp/vr.txt" 2>/dev/null || : > "$tmp/vr.txt"
     local verd; verd="$(python3 "$here/parse_verify.py" "$tmp/vr.txt")"
@@ -152,14 +157,21 @@ for w in json.load(open(sys.argv[1]))["windows"]:
 while IFS=$'\t' read -r topic anchor query t0 t1; do
   [[ "$(cat "$vcount")" -ge "$CAP" ]] && { echo "broll-pick: vision cap $CAP reached; dropping remaining" >&2; break; }
   winlen="$(python3 -c "print(round(float('$t1')-float('$t0'),3))")"
-  res="$(try_candidate "$topic" "$query" "$winlen")"; rc=$?
+  # spoken text during this window — gives the verifier narrative context so it
+  # can reject literal-but-wrong footage (cat laser vs sniper dot).
+  context="$(python3 -c '
+import json,sys
+tx=json.load(open(sys.argv[1])); a,b=float(sys.argv[2]),float(sys.argv[3])
+ws=[str(w.get("w","")).strip() for w in tx.get("words",[]) if a-0.3<=w.get("t0",0)<=b+0.3]
+print(" ".join(ws)[:240])' "$transcript" "$t0" "$t1" 2>/dev/null)"
+  res="$(try_candidate "$topic" "$query" "$winlen" "$context")"; rc=$?
   if [[ $rc -ne 0 || -z "$res" ]]; then
     # rewrite query once (ask Claude for one alternate phrasing)
     echo "Give ONE alternate YouTube search query (2-6 words) for B-roll of: $topic. Flip literal<->metaphorical or abstract<->embodied vs the failed query \"$query\". Output ONLY the query, no quotes, no prose." > "$tmp/rw.txt"
     run_claude_step "broll-rewrite" "$tmp/rw.txt" "$tmp/rw_out.txt" 2>/dev/null || : > "$tmp/rw_out.txt"
     q2="$(head -1 "$tmp/rw_out.txt" | tr -d '"' | sed 's/^ *//;s/ *$//')"
     [[ -z "$q2" ]] && { echo "broll-pick: drop window '$topic' (no rewrite)" >&2; continue; }
-    res="$(try_candidate "$topic" "$q2" "$winlen")"; rc=$?
+    res="$(try_candidate "$topic" "$q2" "$winlen" "$context")"; rc=$?
     query="$q2"
     if [[ $rc -ne 0 || -z "$res" ]]; then echo "broll-pick: drop window '$topic' (2nd miss)" >&2; continue; fi
   fi
@@ -169,14 +181,21 @@ while IFS=$'\t' read -r topic anchor query t0 t1; do
   srcinfo="$(echo "$res" | cut -d' ' -f3-)"
   cid="${srcinfo%%|*}"; rest="${srcinfo#*|}"; ctitle="${rest%%|*}"; curl="${rest##*|}"
   nn=$((nn+1))
-  clip="$(printf '%s/broll_%02d.mp4' "$broll_dir" "$nn")"
+  slot="$(printf '%s/%s_broll_%02d' "$broll_dir" "$slot_base" "$nn")"
+  rm -f "$slot".* 2>/dev/null
+  # download into a %(ext)s template — the merged best-format often lands as
+  # .webm/.mkv, not .mp4. Capture whatever real file results and point
+  # clip_path at it, so broll-composite's os.path.exists check never misses
+  # (shorts-2xz: the bare broll_NN.mp4 path never existed -> all cutaways dropped).
   if ! "$YTDLP" --download-sections "*${s0}-${s1}" --force-keyframes-at-cuts \
+        --merge-output-format mp4 \
         -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best" \
-        -o "$clip" "$curl" >/dev/null 2>&1; then
+        -o "$slot.%(ext)s" "$curl" >/dev/null 2>&1; then
     echo "broll-pick: download failed for $topic; dropping" >&2
     nn=$((nn-1)); continue
   fi
-  [[ -f "$clip" ]] || { echo "broll-pick: no file after download; dropping" >&2; nn=$((nn-1)); continue; }
+  clip="$(ls "$slot".* 2>/dev/null | head -1)"
+  [[ -n "$clip" && -f "$clip" ]] || { echo "broll-pick: no file after download; dropping" >&2; nn=$((nn-1)); continue; }
   python3 -c '
 import json,sys
 t0,t1,s0,s1,topic,anchor,query,cid,title,url,clip=sys.argv[1:12]

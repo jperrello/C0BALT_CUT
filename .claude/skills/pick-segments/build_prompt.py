@@ -77,7 +77,14 @@ Audio energy (per ~1s of source, bucketed to ~60 bins, ▁ low → █ high):
 Transcript (timestamped lines, seconds):
 {transcript_block}
 {topic_rules}
-Pick {n} non-overlapping spans, each {dmin:.0f}-{dmax:.0f} seconds long, that would work as standalone shorts. Avoid mid-sentence cuts.
+Pick {n} non-overlapping shorts, each {dmin:.0f}-{dmax:.0f} seconds of FINAL runtime, that would work as standalone shorts. Avoid mid-sentence cuts.
+
+ASSEMBLE THE STORY WITH CUTS (important): a great short is EDITED, not just a raw clip. Each short is built from 1-3 source segments ("cuts") joined end-to-end. Most strong moments are a single continuous cut. But when the best version of a story has a slow middle, a tangent, or dead setup between two strong beats, SPLIT it: keep the gripping setup, CUT OUT the sag, and jump to the payoff — so the viewer gets a tight, complete arc instead of a thin skeleton or a meandering clip. Think like an editor assembling the most engaging 20-45s, not a knife making one slice.
+  - Provide "cuts": a list of [start, end] source-second ranges, in chronological order, non-overlapping. The cuts play back-to-back.
+  - ALL cuts of one short MUST stay within ONE topic — you are tightening a single story, never splicing two unrelated ones.
+  - The SUM of cut durations must be {dmin:.0f}-{dmax:.0f}s. Keep cuts to 1-3; don't over-chop.
+  - t0 = first cut's start, t1 = last cut's end.
+  - A single-cut short is just "cuts": [[t0, t1]] — that's fine and common.
 
 SCROLL-STOP HOOK (highest priority — shorts that don't grab in the first 1-2s are dead):
 You are picking the spans a viewer is LEAST likely to scroll past and MOST likely to finish. The OPENING WORDS of each span are what a viewer sees first. Score each pick on:
@@ -90,4 +97,4 @@ HARD REJECT — do NOT pick spans whose first transcript word is filler:
 Trim the span start forward to a stronger opening word if needed (still respect {dmin:.0f}s minimum).
 
 Reply with ONLY a JSON object (no prose, no code fences):
-{{"shorts": [{{"t0": <float>, "t1": <float>, "rationale": "<short reason>", "title_suggestion": "<short title>", "hook_score": <0-10>, "structure_score": <0-10>, "overall_score": <0-10>}}]}}""")
+{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "rationale": "<short reason>", "title_suggestion": "<short title>", "hook_score": <0-10>, "structure_score": <0-10>, "overall_score": <0-10>}}]}}""")

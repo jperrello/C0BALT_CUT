@@ -19,6 +19,13 @@ verdicts = {int(v["span"]): v for v in data.get("verdicts", [])}
 out = []
 for i, s in enumerate(segs):
     v = verdicts.get(i)
+    # multi-cut spans are already tightened-by-construction (the editor dropped
+    # the sag); tightening the envelope here would desync the internal cuts.
+    if len(s.get("cuts") or []) > 1:
+        s = dict(s)
+        s["coherence_verdict"] = "keep (multi-cut)"
+        out.append(s)
+        continue
     if v is None or v.get("action") == "keep":
         s = dict(s)
         s["coherence_verdict"] = "keep"

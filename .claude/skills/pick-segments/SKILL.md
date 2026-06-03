@@ -1,6 +1,6 @@
 ---
 name: pick-segments
-description: Pick N clip-worthy spans from a transcript. Claude reads the full transcript plus a per-second RMS energy summary and returns time ranges suitable for shorts. Replaces the old keyword/hook-word heuristic ranker.
+description: Pick N clip-worthy spans from a transcript. Claude reads the full transcript plus a per-second RMS energy summary and returns the most engaging time ranges for shorts. Each span carries `cuts` — 1-3 non-contiguous source ranges within ONE topic, assembled into a tighter story (skip the sag, keep hook→payoff); a single-cut span is just `cuts:[[t0,t1]]`. Replaces the old keyword/hook-word heuristic ranker.
 ---
 
 # pick-segments

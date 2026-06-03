@@ -64,18 +64,18 @@ source video
   ├─ ingest           (yt-dlp → work/<id>/source.mp4 + ingest.json)
   ├─ transcribe       (whisper.cpp local → transcript.json)
   ├─ segment-topics   (Claude → topics.json)
-  ├─ pick-segments    (Claude over transcript + RMS + topics → segments.raw.json, N spans)
-  ├─ verify-coherence (tighten incoherent spans to the dominant topic)
-  ├─ bookend-trim     (Claude snaps each span's [t0,t1] to sentence boundaries)
+  ├─ pick-segments    (Claude over transcript + RMS + topics → segments.raw.json, N spans; each span carries `cuts`: 1-3 within-topic source ranges assembled into one story)
+  ├─ verify-coherence (tighten incoherent spans to the dominant topic; multi-cut spans pass through untouched)
+  ├─ bookend-trim     (Claude snaps each span's [t0,t1] to sentence boundaries; for multi-cut, snaps the first cut's start + last cut's end)
   └─ per span:
-       cut-clip
-        → rebase
+       cut-clip (assemble: when `cuts` has >1 range, cut each precisely + concat into one clip; assemble.py builds the joined clip-local transcript)
+        → rebase (single-cut spans only; multi-cut uses assemble.py)
         → trim-filler + cut-filler     (Claude cuts filler / trail-offs / digressive asides)
         → tighten-pace                 (collapse remaining inter-word silences >0.25s)
-        → fill-vertical                (1080x1920 punch-in crop, fills the frame — NO blur bars, NO letterbox)
+        → fill-vertical                (1080x1920 punch-in crop, fills the frame — NO blur bars, NO letterbox; biases to the dominant speaker across shots, frames non-speaker reaction shots looser so it never hero-frames a listener)
         → chunk-captions               (transcript → chunks.json; moved AHEAD of b-roll so cutaway windows snap to chunk boundaries)
-        → broll-pick                   (Claude anchors → mcptube/yt-dlp-sourced cutaways → broll_plan.json)
-        → broll-composite              (full-frame hard-cut cutaways onto the vertical clip; podcast audio continuous)
+        → broll-pick                   (Claude contextual/scene anchors → mcptube/yt-dlp cutaways → broll_plan.json; vision verify judges tonal fit + rejects literal-but-wrong; per-clip slot names, dense ~6-10 windows, BROLL_VISION_CAP default 16)
+        → broll-composite              (full-frame hard-cut cutaways onto the vertical clip, saliency-cropped not center; podcast audio continuous)
         → burn-subtitles               (word-karaoke PNG overlay, burned ON TOP of the b-roll)
         → generate-title + title-transition (silent animated intro card)
         → source-credit                (persistent "Original video: <title>" credit, bottom third)
@@ -88,11 +88,13 @@ source video
 ```
 
 **Hard rules for any "rerun the pipeline" / full-pipeline request:**
-- Use `fill-vertical` for the 9:16 reframe — punch-in crop that FILLS the frame (face ~45% height, lip-activity speaker pick, saliency crop for no-face shots). NEVER letterbox, NO blur bars. Both `fit-vertical` and `reframe-vertical` are retired/deleted.
+- Use `fill-vertical` for the 9:16 reframe — punch-in crop that FILLS the frame (face ~45% height, lip-activity speaker pick, saliency crop for no-face shots). NEVER letterbox, NO blur bars. Both `fit-vertical` and `reframe-vertical` are retired/deleted. It clusters faces across shots to find the dominant speaker, biases the per-shot pick toward whoever is actually talking, and frames a non-speaking reaction/listener shot LOOSER so the short never dwells hero-framed on the wrong person.
+- pick-segments builds each short from `cuts` — 1-3 NON-contiguous source ranges within ONE topic, assembled into one story (skip the sag, keep hook→payoff). The `cut-clip` step cuts each range precisely and concats; `assemble.py` joins the clip-local transcript so all downstream skills stay synced. A single-cut short is `cuts:[[t0,t1]]` and takes the plain `rebase` path. Multi-cut spans bypass verify-coherence tightening (already tightened by construction).
 - `chunk-captions` runs BEFORE `broll-pick` (b-roll windows snap to whole caption-chunk boundaries — no mid-word cuts).
 - `broll-composite` runs AFTER `broll-pick` and BEFORE `burn-subtitles` — captions must burn OVER the cutaways, never under them.
-- B-roll cutaways are full-frame hard cuts (entire 1080×1920 replaced, scale-cover + crop, no bars, no crossfade/zoom). Podcast audio is continuous (stream-copied); b-roll audio is always dropped. Bottom-bar/letterbox b-roll = regression.
-- `broll-pick` discovery uses the mcptube-bundled `yt-dlp` ytsearch, NOT `mcptube discover` (the latter needs an LLM API key the stack forbids). Vision verify via `claude -p`; total vision calls bounded by `BROLL_VISION_CAP` (default 10).
+- B-roll cutaways are full-frame hard cuts (entire 1080×1920 replaced, scale-cover + SALIENCY crop toward the action — not blind center — no bars, no crossfade/zoom). Podcast audio is continuous (stream-copied); b-roll audio is always dropped. Bottom-bar/letterbox b-roll = regression.
+- `broll-pick` anchors are CONTEXTUAL/scene-level, not literal keyword objects — footage must match the story's tone (a tense "red dot" beat wants a sniper/laser sight, NOT a cat laser toy). Vision verify is given the spoken context and rejects literal-but-wrong matches. Aim dense (~6-10 windows where a sensible visual exists). B-roll files are namespaced per clip (`<clip>_broll_NN.<ext>`) in the shared `broll/` dir — NEVER reuse bare `broll_NN.mp4` slot names across spans (cross-span contamination bug).
+- `broll-pick` discovery uses the mcptube-bundled `yt-dlp` ytsearch, NOT `mcptube discover` (the latter needs an LLM API key the stack forbids). Vision verify via `claude -p`; total vision calls bounded by `BROLL_VISION_CAP` (default 16).
 - `broll-cleanup` runs exactly ONCE at end of run, evicting only `video_id`s in each `broll_plan.json`'s `ingested_video_ids` — never the podcast source. It must never modify or delete `broll_plan.json`.
 - `title-transition` is mandatory and runs AFTER `burn-subtitles`, BEFORE `loudnorm`. The title text comes from `generate-title`.
 - `bookend-trim` runs AFTER `verify-coherence` and BEFORE `cut-clip`. It snaps each span's `[t0, t1]` to a clean sentence boundary so shorts don't end mid-sentence.

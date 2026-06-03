@@ -1,6 +1,6 @@
 ---
 name: broll-composite
-description: Hard-cut full-frame B-roll cutaways onto a 1080x1920 clip per broll_plan.json. During each [t0,t1] the entire frame is replaced by the cutaway (instant in/out, no crossfade/zoom); 16:9 source is scale-to-cover + center-cropped to 1080x1920 with no bars. Podcast audio is stream-copied; video re-encoded. Zero valid picks -> passthrough copy. Pure ffmpeg.
+description: Hard-cut full-frame B-roll cutaways onto a 1080x1920 clip per broll_plan.json. During each [t0,t1] the entire frame is replaced by the cutaway (instant in/out, no crossfade/zoom); 16:9 source is scale-to-cover + SALIENCY-cropped (OpenCV, toward the action — not blind center, with a centered fallback) to 1080x1920 with no bars. Podcast audio is stream-copied; video re-encoded. Zero valid picks -> passthrough copy. Pure ffmpeg.
 allowed-tools: Bash
 user-invocable: true
 ---
