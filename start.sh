@@ -562,9 +562,16 @@ run_phase3_captions() {
     cp "$titled" "$credited"
   }
 
+  log "[phase 3 / span $idx / captions] watermark"
+  local marked="$dir/clip_${idx}.marked.mp4"
+  bash "$(skill watermark)" "$credited" "$marked" >/dev/null || {
+    log "[phase 3 / span $idx / captions] watermark FAILED (continuing without mark)"
+    cp "$credited" "$marked"
+  }
+
   log "[phase 3 / span $idx / captions] loudnorm"
   local leveled="$dir/clip_${idx}.leveled.mp4"
-  bash "$(skill loudnorm)" "$credited" "$leveled" >/dev/null || {
+  bash "$(skill loudnorm)" "$marked" "$leveled" >/dev/null || {
     log "[phase 3 / span $idx / captions] loudnorm FAILED"
     echo "loudnorm" > "$dir/clip_${idx}.fail.captions"; return 1
   }

@@ -13,7 +13,7 @@ spec = sys.argv[5] if len(sys.argv) > 5 else "auto"
 
 FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
 WHITE = (245, 245, 240, 255)
-ACCENT = (0, 229, 255, 255)   # electric cyan — matches burn-subtitles active-word
+ACCENT = (46, 107, 255, 255)  # Sapphire Glow #2E6BFF — matches burn-subtitles active-word
 STROKE = (0, 0, 0, 255)
 
 # Pick the accented word: the longest content word that isn't a stop word.

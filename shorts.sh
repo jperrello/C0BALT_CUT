@@ -169,8 +169,16 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     titled="$dir/clip_$idx.titled.mp4"
     bash "$(skill title-transition)" "$sub" "$title" "$titled" >/dev/null
 
+    # source-credit: persistent "Original video: <title>" top chyron
+    credited="$dir/clip_$idx.credited.mp4"
+    bash "$(skill source-credit)" "$titled" "$ingest_json" "$credited" >/dev/null
+
+    # watermark: persistent @C0BALT_CUT mark at the bottom (opposite the credit)
+    marked="$dir/clip_$idx.marked.mp4"
+    bash "$(skill watermark)" "$credited" "$marked" >/dev/null
+
     leveled="$dir/clip_$idx.leveled.mp4"
-    bash "$(skill loudnorm)" "$titled" "$leveled"
+    bash "$(skill loudnorm)" "$marked" "$leveled"
 
     # like-subscribe-overlay: animated CTA in the last 4s
     ctaed="$dir/clip_$idx.ctaed.mp4"

@@ -11,7 +11,7 @@ H = int(sys.argv[4])
 
 FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
 LABEL = "Original video:"
-BLUE = (0, 229, 255, 255)       # electric cyan #00E5FF — matches burn-subtitles + title accent
+BLUE = (46, 107, 255, 255)      # Sapphire Glow #2E6BFF — matches burn-subtitles + title accent
 WHITE = (245, 245, 240, 255)
 STROKE = (0, 0, 0, 255)
 

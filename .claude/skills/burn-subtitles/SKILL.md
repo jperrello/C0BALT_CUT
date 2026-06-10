@@ -46,8 +46,9 @@ This is the project's caption identity — keep it consistent:
 
 - **Font**: Impact (`/System/Library/Fonts/Supplemental/Impact.ttf`) — chunky
   condensed sans, distinct from the CapCut/Submagic/Opus default of Arial.
-- **Accent (active word)**: electric cyan `#00E5FF` — chosen against the
-  ubiquitous MrBeast-yellow `#FFD633`.
+- **Accent (active word)**: Sapphire Glow `#2E6BFF` — the C0BALT CUT brand
+  accent (brand/BRAND.md), chosen against the ubiquitous MrBeast-yellow
+  `#FFD633`.
 - **Context (earlier visible words)**: off-white `#F5F5F0`.
 - **Position**: upper-third (top of first line at ~22% of frame height) — not
   the default lower-third.

@@ -56,4 +56,5 @@ If the model mangles the lettering (common), regenerate the same prompt with `no
 
 - `generate-title` / `title-transition`: title cards on Carbon Black with Platinum type and a Sapphire accent rule.
 - `like-subscribe-overlay`: CTA card in Cobalt/Sapphire, gem-play-button mark next to "Subscribe".
-- `burn-subtitles`: keep karaoke highlight in Sapphire Glow (#2E6BFF).
+- `burn-subtitles`: karaoke highlight in Sapphire Glow (#2E6BFF). DONE — also the title-transition accent word and the source-credit "Original video:" label.
+- `watermark`: persistent `@C0BALT_CUT` bottom-center mark on every short — Platinum type, slashed-zero in Sapphire Glow, semi-transparent.

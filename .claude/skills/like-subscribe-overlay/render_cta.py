@@ -12,7 +12,7 @@ H = int(sys.argv[3])
 
 FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
 WHITE = (245, 245, 240, 255)
-ACCENT = (0, 229, 255, 255)
+ACCENT = (46, 107, 255, 255)
 STROKE = (0, 0, 0, 255)
 
 text_top = "LIKE & SUBSCRIBE"

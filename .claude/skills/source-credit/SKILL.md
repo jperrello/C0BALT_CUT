@@ -7,7 +7,7 @@ user-invocable: true
 
 # source-credit
 
-Persistent attribution overlay. "Original video:" in blue (#1E90FF), the
+Persistent attribution overlay. "Original video:" in Sapphire Glow (#2E6BFF), the
 source video's title in white, baked in at the same vertical band as a TV
 chyron. Same renderer pattern as `burn-subtitles` / `title-transition`
 (PIL PNG, ffmpeg overlay) because the local ffmpeg has no libass/drawtext.

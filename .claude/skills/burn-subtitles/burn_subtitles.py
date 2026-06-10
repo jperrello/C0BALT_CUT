@@ -16,7 +16,7 @@ video = sys.argv[9] if len(sys.argv) > 9 else None
 
 FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
 WHITE = (245, 245, 240, 255)
-ACCENT = (0, 229, 255, 255)   # electric cyan — deliberate brand accent
+ACCENT = (46, 107, 255, 255)  # Sapphire Glow #2E6BFF — brand/BRAND.md palette
 STROKE = (0, 0, 0, 255)
 
 # rolling-window tuning (legacy word-karaoke style only)

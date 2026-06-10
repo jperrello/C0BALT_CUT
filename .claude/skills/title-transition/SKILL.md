@@ -58,7 +58,7 @@ The instant the title lands is the visual beat. Two visual effects fire together
    end of the window. The title is overlaid AFTER the shake, so the text stays
    readable while the background "kicks".
 The card is rendered as bare text (no panel, no border) in Impact, ALL CAPS,
-white with one cyan-accented keyword (`#00E5FF`) and a thick black stroke for
+white with one sapphire-accented keyword (`#2E6BFF`) and a thick black stroke for
 legibility — the exact same visual language as `burn-subtitles`' caption
 preset so the title and the captions read as one brand.
 

@@ -38,7 +38,7 @@ with instructions if it's unreachable. Set `SHORTS_N`, `SHORTS_DMIN`,
 - `shorts-<id>-mcptube` — bash: background mcptube add
 - `shorts-<id>-analysis` — Claude: topics → picks → coherence
 - `shorts-<id>-editor-NN` — Claude: bookend-trim, trim-filler, verify-bookends (with bash skills interleaved)
-- `shorts-<id>-captions-NN` — Claude: chunk-captions, generate-title (bash: burn-subtitles, title-transition, loudnorm)
+- `shorts-<id>-captions-NN` — Claude: chunk-captions, generate-title (bash: burn-subtitles, title-transition, source-credit, watermark, loudnorm)
 - `shorts-<id>-completion-NN` — Claude: pick-mood; bash: like-subscribe-overlay, bg-music, qc, save-local
 
 Panes are torn down on run completion. `shorts.sh` remains as a
