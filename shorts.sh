@@ -194,10 +194,7 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
       exit 3
     fi
 
-    dest="$(bash "$(skill save-local)" "$final" "$src" "short_$idx.mp4" | tail -1)"
-
-    # feedback-form: drop the scored review form next to the saved short
-    bash "$(skill feedback-form)" "$dest" "$dir/clip_$idx" >/dev/null || true
+    bash "$(skill save-local)" "$final" "$src" "short_$idx.mp4" >/dev/null
   )
   rc=$?
   if [[ $rc -eq 0 ]]; then

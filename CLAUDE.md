@@ -84,7 +84,6 @@ source video
         → pick-mood + bg-music         (Claude picks ./songs/<mood>/ from clip transcript; bed at -18dB, last 5 picks blacklisted via ./songs/.recent)
         → qc-clip                      (ffprobe duration + size gate)
         → save-local                   (./output/<source>/short_NN.mp4)
-        → feedback-form                (drops <short>.feedback.md next to the saved short, pre-filled with title + mood from the work clip, for the user to score later)
   └─ broll-cleanup     (ONCE at end of run: evict only this run's mcptube b-roll ingests + local broll/*.mp4 cache; broll_plan.json persists)
 ```
 
@@ -104,18 +103,14 @@ source video
 - If `shorts.sh` does not invoke every skill above in the listed order, `shorts.sh` is wrong — fix the entrypoint, do not silently skip skills.
 - Verify after a run: every saved `output/<source>/short_NN.mp4` must be 1080x1920 (full-bleed punch-in, NO blur bars), have a title card on the first ~2.5s, AND have a CTA card on the last ~4s. If any is missing, the pipeline regressed.
 
-## Feedback loop (taste.md)
+## Feedback loop (review.py + taste.md)
 
-Structured user feedback is how the pipeline improves between runs. Three parts:
+Structured user feedback is how the pipeline improves between runs. NOT a skill; it is `review.py` at repo root.
 
-1. **feedback-form** runs after `save-local` for every short. It drops a stage-mapped `output/<source>/<short>.feedback.md` form: one scored section per gradeable property (topic, hook, title, captions, broll, music, pacing, overall), each tagged with the skills that own it. The user fills in 1-5 scores plus a why line, then sets `reviewed:` to a date.
-2. **feedback-ingest** parses every reviewed form into `feedback/history.jsonl`, then distills the why-text into `taste.md` (max 5 imperative bullets per section, newest feedback wins; see its SKILL.md for the distillation rules). Run it whenever the user says they have filled in forms.
-3. **taste.md is read at generation time.** `generate-title` injects `## title`, `pick-mood` injects `## music`, `pick-segments` injects `## topic` + `## hook` into their prompts via their `build_prompt.py`; `broll-pick` reads `## broll` per its SKILL.md. Missing `taste.md` is fine: every skill degrades to its base prompt.
-
-Rules:
-- Never overwrite an existing `*.feedback.md` (a filled form is user data).
-- Never hand-edit `feedback/history.jsonl`; it is rebuilt from forms on every ingest.
-- `taste.md` bullets must trace back to records in `history.jsonl`. Do not invent guidance.
+1. **`python3 review.py`** serves a minimal form at `http://127.0.0.1:8765` (PORT env to change). The user pastes the path to a rendered short and scores stage-mapped sections (topic, hook, title, captions, broll, music, pacing, overall verdict), each keyed to the skills that own it, with a why line per score.
+2. **Submit spawns an autonomous fixer.** The server appends the record to `feedback/history.jsonl`, writes a mission to `feedback/missions/<ts>.md`, and spawns a detached tmux session (`shorts-fix-<ts>`, crew-style: `claude --dangerously-skip-permissions --append-system-prompt-file <mission>` plus an unblocker watchdog for new-file Write prompts). The fixer has NO human in the loop: AskUserQuestion is prohibited, it never stops to clarify, it makes assumptions and records them in `feedback/missions/<ts>.report.md`.
+3. **The fixer repairs the reviewed video** by re-running the owning stages from the earliest change downstream, saving `<stem>.fixed.mp4` next to the original (originals are never overwritten). Prompt-driven stages get the why-text as guidance; parameter-driven stages (captions, pacing, music level) are fixed by editing parameters, per-invocation by default, repo defaults only for clearly standing preferences.
+4. **The fixer also updates `taste.md`** so feedback compounds: one `## <key>` section per feedback key, max 5 imperative bullets, newest feedback wins, nothing invented without a `history.jsonl` record behind it. `generate-title` injects `## title`, `pick-mood` injects `## music`, `pick-segments` injects `## topic` + `## hook` via their `build_prompt.py`; `broll-pick` reads `## broll` per its SKILL.md. Missing `taste.md` is fine: every skill degrades to its base prompt.
 
 ## Conventions
 
