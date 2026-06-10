@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
 # Build a compact prompt for Claude: transcript lines + RMS profile.
-import json, re, sys
-
-
-def taste(key):
-    try:
-        text = open("taste.md").read()
-    except OSError:
-        return ""
-    m = re.search(rf"^## {key}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
-    if not m:
-        return ""
-    return m.group(1).strip()
-
+import json, sys
 
 transcript_path, rms_path, n, dmin, dmax = sys.argv[1:6]
 topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
@@ -80,19 +68,6 @@ Each picked span MUST lie entirely within ONE topic — never straddle a boundar
 else:
     topic_rules = ""
 
-guide = ""
-if taste("topic") or taste("hook"):
-    parts = []
-    if taste("topic"):
-        parts.append(f"On topic choice:\n{taste('topic')}")
-    if taste("hook"):
-        parts.append(f"On hooks and endings:\n{taste('hook')}")
-    joined = "\n\n".join(parts)
-    guide = f"""
-STANDING VIEWER FEEDBACK (distilled from the user's scored past shorts — weigh it when picking):
-{joined}
-"""
-
 print(f"""You are picking clip-worthy spans for vertical shorts.
 
 Source duration: {duration:.1f}s
@@ -101,7 +76,7 @@ Audio energy (per ~1s of source, bucketed to ~60 bins, ▁ low → █ high):
 
 Transcript (timestamped lines, seconds):
 {transcript_block}
-{topic_rules}{guide}
+{topic_rules}
 Pick {n} non-overlapping shorts, each {dmin:.0f}-{dmax:.0f} seconds of FINAL runtime, that would work as standalone shorts. Avoid mid-sentence cuts.
 
 ASSEMBLE THE STORY WITH CUTS (important): a great short is EDITED, not just a raw clip. Each short is built from 1-3 source segments ("cuts") joined end-to-end. Most strong moments are a single continuous cut. But when the best version of a story has a slow middle, a tangent, or dead setup between two strong beats, SPLIT it: keep the gripping setup, CUT OUT the sag, and jump to the payoff — so the viewer gets a tight, complete arc instead of a thin skeleton or a meandering clip. Think like an editor assembling the most engaging 20-45s, not a knife making one slice.

@@ -50,8 +50,9 @@ verdict <select name="verdict"><option>rework</option><option>post</option><opti
 <textarea name="w_overall" rows="2" cols="90" placeholder="why"></textarea></p>
 <p><input type="submit" value="submit + spawn fixer"></p>
 </form>
-Score 1-5, blank = no opinion. Submit spawns an autonomous claude tmux session
-that fixes the scored problems on this video. Original is never overwritten."""
+Score 1-5, blank = no opinion, anything 4 or below gets fixed. Submit spawns an
+autonomous claude tmux session that fixes this video in place AND patches the
+skills that caused each problem."""
 
 
 def record(form):
@@ -88,9 +89,11 @@ You are an autonomous fixer session spawned by review.py in
   keep moving.
 - If a step fails, try an alternative approach. Only after exhausting
   options do you record the failure in the report and move to the next fix.
-- NEVER overwrite the original video. The fixed render saves next to the
-  original as <stem>.fixed.mp4.
-- Work until the fixed render exists and the report is written, then stop.
+- The fixed render REPLACES the original video at the same path. Render to
+  a temp file first, run qc-clip, and only move it over the original after
+  QC passes, so a failed render can never destroy the video.
+- Work until the original is replaced, the pipeline is patched, and the
+  report is written, then stop.
 
 ## Inputs
 - Video: {video}
@@ -112,16 +115,17 @@ operating on the video itself with ffmpeg plus a fresh whisper transcript;
 note the degraded mode in the report.
 
 ## Step 2: plan the fixes
-Fix every section scored 3 or below, and any section whose why text asks
-for a change regardless of score. Read CLAUDE.md for the canonical stage
-order, then re-run from the EARLIEST changed stage downstream; skills live
-at .claude/skills/<name>/<name>.sh and shorts.sh shows how each is invoked
-with work/<id>/clip_NN.* artifacts.
+Fix every section scored 4 or below, and any section whose why text asks
+for a change regardless of score. Only a 5 means leave it alone. Read
+CLAUDE.md for the canonical stage order, then re-run from the EARLIEST
+changed stage downstream; skills live at .claude/skills/<name>/<name>.sh
+and shorts.sh shows how each is invoked with work/<id>/clip_NN.* artifacts.
 
 Per section:
-- topic: an existing short cannot change its topic; fold the why into
-  taste.md only. Exception: if the why explicitly asks for different in/out
-  points, adjust the span cuts and re-render.
+- topic: an existing short cannot change its topic; this feedback is
+  handled in Step 4 by patching pick-segments/segment-topics so they stop
+  choosing moments like this. Exception: if the why explicitly asks for
+  different in/out points, adjust the span cuts and re-render.
 - hook: adjust the span start/end (bookend logic) so the opening words land
   the hook and the ending is clean, then re-render downstream.
 - title: re-run generate-title with the why appended to its prompt context,
@@ -137,32 +141,36 @@ Per section:
 - pacing: parameter-driven. Adjust trim-filler aggressiveness or the
   tighten-pace silence threshold per the why, then re-render downstream.
 
-Parameter-driven stages have no prompt to steer, so YOU are the feedback
-mechanism: prefer per-invocation parameter overrides for this render; only
-change a repo default when the why states a clearly standing preference,
-and say so in the report.
+## Step 3: render, verify, replace
+Assemble the fixed chain in canonical order into a temp file. Verify per
+CLAUDE.md: 1080x1920 full-bleed, title card in the first ~2.5s, CTA in the
+last ~4s, audio at -14 LUFS with the bed under it, qc-clip passes. Then
+move the temp file over the original path. The original is gone after
+this; that is intended.
 
-## Step 3: render and verify
-Assemble the fixed chain in canonical order and save as
-<original stem>.fixed.mp4 next to the original. Verify per CLAUDE.md:
-1080x1920 full-bleed, title card in the first ~2.5s, CTA in the last ~4s,
-audio at -14 LUFS with the bed under it.
-
-## Step 4: compound the feedback into taste.md
-Update {ROOT}/taste.md. Contract: one `## <key>` section per feedback key
-(topic, hook, title, captions, broll, music, pacing, overall); bullets
-only, max 5 per section; each bullet one imperative generalized
-instruction derived from the why text, never invented; newest feedback
-wins over contradicted older bullets. generate-title, pick-mood, and
-pick-segments inject these sections into their prompts; broll-pick reads
-## broll per its SKILL.md.
+## Step 4: patch the pipeline so it never does this again
+This is the whole point of you, not an afterthought. For EVERY section the
+user flagged, trace the failure to the skill that produced it and edit
+THAT skill directly so the habit is gone:
+- Prompt-driven stages (pick-segments, segment-topics, generate-title,
+  pick-mood, broll-pick, trim-filler, chunk-captions): edit the prompt
+  text in the skill's build_prompt.py / SKILL.md. Add a ban, a rule, or a
+  reweighting that makes this exact mistake impossible next run. Match the
+  existing prompt's style (the bans list in generate-title is the model).
+- Parameter-driven stages (burn-subtitles, tighten-pace, bg-music levels):
+  change the default value in the skill script itself.
+- Generalize the why text into a rule; never hardcode this one video. If
+  the user's feedback contradicts an existing prompt rule, the user wins:
+  rewrite the old rule, do not stack a contradiction.
+- Do NOT create any taste/preference/memory document. The skills ARE the
+  memory. Every lesson lands as a concrete edit to the skill that made the
+  mistake.
 
 ## Step 5: report and commit
-Write feedback/missions/{ts}.report.md: what you fixed, parameters
-changed (per-invocation vs repo default), assumptions made, anything you
-could not fix and why. Commit and push any repo file changes (taste.md,
-parameter defaults) with a clear message; never commit videos or
-feedback/.
+Write feedback/missions/{ts}.report.md: what you fixed in the video, which
+skills you patched and how (quote the edited lines), assumptions made,
+anything you could not fix and why. Commit and push the skill patches with
+a message citing this mission; never commit videos or feedback/.
 """
 
 
@@ -213,7 +221,7 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(f"""spawned <b>{html.escape(session)}</b> on {html.escape(os.path.basename(video))}<br>
 watch: <code>tmux attach -t {html.escape(session)}</code> (detach: ctrl-b d)<br>
 mission: <code>{html.escape(path)}</code><br>
-fixed render will land next to the original as .fixed.mp4<br>
+fixed render replaces the original in place after QC passes<br>
 <a href=/>review another</a>""")
 
     def log_message(self, fmt, *args):

@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-import json, re, sys, os
-
-
-def taste(key):
-    try:
-        text = open("taste.md").read()
-    except OSError:
-        return ""
-    m = re.search(rf"^## {key}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
-    if not m:
-        return ""
-    return m.group(1).strip()
-
+import json, sys, os
 
 transcript_path, songs_root = sys.argv[1:3]
 
@@ -29,14 +17,6 @@ moods = sorted(
 )
 mood_list = "\n".join(f"- {m}" for m in moods)
 
-guide = ""
-if taste("music"):
-    guide = f"""Standing viewer feedback (distilled from the user's scored past shorts).
-Apply when choosing:
-{taste("music")}
-
-"""
-
 print(f"""You are choosing the background music mood for a short-form vertical video clip.
 
 The library is organized into mood folders. Pick ONE folder whose vibe best
@@ -46,7 +26,7 @@ and pacing, not lyrics.
 Available moods (use one of these EXACT names):
 {mood_list}
 
-{guide}Clip transcript:
+Clip transcript:
 {body}
 
 Reply with ONLY the mood folder name, exactly as listed. No quotes, no

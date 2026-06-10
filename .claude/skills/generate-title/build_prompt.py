@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-import json, re, sys
-
-
-def taste(key):
-    try:
-        text = open("taste.md").read()
-    except OSError:
-        return ""
-    m = re.search(rf"^## {key}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
-    if not m:
-        return ""
-    return m.group(1).strip()
-
+import json, sys
 
 transcript_path, ingest_path = sys.argv[1:3]
 ctx_path = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -87,15 +75,6 @@ verbatim, and the cold-viewer test below still applies.
 
 """
 
-guide = ""
-if taste("title"):
-    guide = f"""## Standing viewer feedback (distilled from the user's scored past shorts)
-
-Apply these unless one conflicts with the hard rules below; hard rules win:
-{taste("title")}
-
-"""
-
 print(f"""You are writing the TITLE CARD text for a short-form vertical video clip.
 
 The title pops in on the first ~2.5s over the clip's opening frames. It is
@@ -152,7 +131,7 @@ only — surface the single most surprising concrete claim. Do not invent
 a payoff that is not in the transcript. Always emit a title — never
 return empty.
 
-{guide}## Hard rules
+## Hard rules
 
 - THIRD PERSON ONLY. No "I", "me", "my", "we", "us", "our", "you",
   "your". Chyron voice.
