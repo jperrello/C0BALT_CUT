@@ -49,14 +49,14 @@ def fits(font):
 
 
 fs, font, lines = None, None, None
-for size in range(60, 39, -2):
+for size in range(58, 37, -2):
     f = ImageFont.truetype(FONT, size)
     ok, ls = fits(f)
     if ok:
         fs, font, lines = size, f, ls
         break
 if fs is None:
-    fs = 40
+    fs = 38
     font = ImageFont.truetype(FONT, fs)
     _, lines = fits(font)
 

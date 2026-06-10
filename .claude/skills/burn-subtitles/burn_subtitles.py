@@ -29,7 +29,7 @@ font = ImageFont.truetype(FONT, fs)
 stroke = max(3, fs // 10)
 maxw = W - int(W * 0.12)
 lineh = int(fs * 1.25)
-marginv = max(40, int(H * 0.22))
+marginv = max(40, int(H * 0.70))
 
 
 def rms_hot(path):

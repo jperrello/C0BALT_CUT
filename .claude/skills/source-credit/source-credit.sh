@@ -49,10 +49,10 @@ trap 'rm -rf "$tmp"' EXIT
 
 python3 "$here/render_credit.py" "$title" "$tmp/credit.png" "$w" "$h"
 
-# Center horizontally; anchor banner with its top at 70% of frame height.
-# For 1080x1920 -> y≈1344. The CTA banner sits in the lower ~12% margin
-# (≈y=1690+), so the two never overlap.
-ov="[0:v][1:v]overlay=x='(W-w)/2':y='H*0.70':format=auto[v]"
+# Center horizontally; anchor banner near the TOP of the frame.
+# For 1080x1920 -> y≈77. Sits above the captions (now in the lower third)
+# and clear of the centered title card.
+ov="[0:v][1:v]overlay=x='(W-w)/2':y='H*0.04':format=auto[v]"
 
 staging="$tmp/$(basename "$out")"
 

@@ -1,6 +1,6 @@
 ---
 name: source-credit
-description: Overlay a persistent "Original video: <title>" credit in the bottom third of a finished short. Reads the source title from work/<id>/ingest.json and renders it as a transparent PNG via PIL; ffmpeg composites it for the whole clip duration. Positioned high enough in the lower band that it never overlaps the like-subscribe-overlay CTA banner. Runs after title-transition and before loudnorm in the per-span chain.
+description: Overlay a persistent "Original video: <title>" credit near the TOP of a finished short. Reads the source title from work/<id>/ingest.json and renders it as a transparent PNG via PIL; ffmpeg composites it for the whole clip duration. Positioned at the top so it sits above the captions (lower third) and clear of the centered title card. Runs after title-transition and before loudnorm in the per-span chain.
 allowed-tools: Bash
 user-invocable: true
 ---
@@ -30,8 +30,9 @@ only when `input` or title changes. Prints the output path to stdout.
 
 ## Geometry
 
-Banner is positioned with its baseline at y = 70% of frame height. For a
-1080x1920 short this puts the credit around y=1340. The CTA banner
-(`like-subscribe-overlay`) sits in the lower ~12% margin (≈y=1690+), so the
-two never collide. Banner width auto-fits to the title; long titles wrap
-to a second line.
+Banner is positioned with its top at y = 4% of frame height. For a
+1080x1920 short this puts the credit around y=77 (a top chyron). Captions
+now live in the lower third (≈y=1344) and the title card pops in centered,
+so the credit collides with neither. Font auto-fits from 58pt down to 38pt
+(2pt smaller than the prior 60→40 range). Banner width auto-fits to the
+title; long titles wrap to a second line.
