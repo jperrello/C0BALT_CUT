@@ -84,6 +84,7 @@ source video
         → pick-mood + bg-music         (Claude picks ./songs/<mood>/ from clip transcript; bed at -18dB, last 5 picks blacklisted via ./songs/.recent)
         → qc-clip                      (ffprobe duration + size gate)
         → save-local                   (./output/<source>/short_NN.mp4)
+        → feedback-form                (drops <short>.feedback.md next to the saved short, pre-filled with title + mood from the work clip, for the user to score later)
   └─ broll-cleanup     (ONCE at end of run: evict only this run's mcptube b-roll ingests + local broll/*.mp4 cache; broll_plan.json persists)
 ```
 
@@ -102,6 +103,19 @@ source video
 - `source-credit` runs AFTER `title-transition` and BEFORE `loudnorm`. It bakes a persistent "Original video: <title>" credit in the bottom third (y≈70% of frame), positioned to not overlap the CTA banner (lower ~12%). Title is read from `work/<id>/ingest.json`.
 - If `shorts.sh` does not invoke every skill above in the listed order, `shorts.sh` is wrong — fix the entrypoint, do not silently skip skills.
 - Verify after a run: every saved `output/<source>/short_NN.mp4` must be 1080x1920 (full-bleed punch-in, NO blur bars), have a title card on the first ~2.5s, AND have a CTA card on the last ~4s. If any is missing, the pipeline regressed.
+
+## Feedback loop (taste.md)
+
+Structured user feedback is how the pipeline improves between runs. Three parts:
+
+1. **feedback-form** runs after `save-local` for every short. It drops a stage-mapped `output/<source>/<short>.feedback.md` form: one scored section per gradeable property (topic, hook, title, captions, broll, music, pacing, overall), each tagged with the skills that own it. The user fills in 1-5 scores plus a why line, then sets `reviewed:` to a date.
+2. **feedback-ingest** parses every reviewed form into `feedback/history.jsonl`, then distills the why-text into `taste.md` (max 5 imperative bullets per section, newest feedback wins; see its SKILL.md for the distillation rules). Run it whenever the user says they have filled in forms.
+3. **taste.md is read at generation time.** `generate-title` injects `## title`, `pick-mood` injects `## music`, `pick-segments` injects `## topic` + `## hook` into their prompts via their `build_prompt.py`; `broll-pick` reads `## broll` per its SKILL.md. Missing `taste.md` is fine: every skill degrades to its base prompt.
+
+Rules:
+- Never overwrite an existing `*.feedback.md` (a filled form is user data).
+- Never hand-edit `feedback/history.jsonl`; it is rebuilt from forms on every ingest.
+- `taste.md` bullets must trace back to records in `history.jsonl`. Do not invent guidance.
 
 ## Conventions
 

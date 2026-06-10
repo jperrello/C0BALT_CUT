@@ -14,6 +14,10 @@ multiple short cutaway windows per topic — each intercut with the speaker, eac
 preferring distinct footage. Windows are expressed as whole chunk-index ranges
 so no cut lands mid-word.
 
+If `./taste.md` exists, read its `## broll` section first and weigh that
+standing viewer feedback when picking anchors and judging tonal fit (it is
+distilled from the user's scored past shorts by feedback-ingest).
+
 Per window: keyless YouTube discovery via the mcptube-bundled `yt-dlp`
 (`ytsearchN:<query>` — `mcptube discover` is NOT used, it requires an LLM API
 key the stack doesn't have), then `mcptube add` the candidate, sample 3 frames

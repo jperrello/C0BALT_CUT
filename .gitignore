@@ -50,3 +50,6 @@ songs/
 .beads-credential-key
 work/
 out/
+
+# Derived from local feedback forms (rebuilt on every ingest)
+feedback/
