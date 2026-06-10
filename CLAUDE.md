@@ -103,15 +103,6 @@ source video
 - If `shorts.sh` does not invoke every skill above in the listed order, `shorts.sh` is wrong — fix the entrypoint, do not silently skip skills.
 - Verify after a run: every saved `output/<source>/short_NN.mp4` must be 1080x1920 (full-bleed punch-in, NO blur bars), have a title card on the first ~2.5s, AND have a CTA card on the last ~4s. If any is missing, the pipeline regressed.
 
-## Feedback loop (review.py)
-
-Structured user feedback is how the pipeline improves between runs. NOT a skill; it is `review.py` at repo root.
-
-1. **`python3 review.py`** serves a minimal form at `http://127.0.0.1:8765` (PORT env to change). The user pastes the path to a rendered short and rates stage-mapped sections (topic, hook, title, captions, broll, music, pacing, plus an overall verdict), each keyed to the skills that own it. Ratings are binary: 1 = bad (why = what is wrong), 2 = good (why = why it worked); the text box's meaning flips with the choice, blank = no opinion.
-2. **Submit spawns an autonomous fixer.** The server appends the record to `feedback/history.jsonl`, writes a mission to `feedback/missions/<ts>.md`, and spawns a detached tmux session (`shorts-fix-<ts>`, crew-style: `claude --dangerously-skip-permissions --append-system-prompt-file <mission>` plus an unblocker watchdog for new-file Write prompts). The fixer has NO human in the loop: AskUserQuestion is prohibited, it never stops to clarify, it makes assumptions and records them in `feedback/missions/<ts>.report.md`.
-3. **The fixer repairs the reviewed video in place.** Every section rated bad gets fixed by re-running the owning stages from the earliest change downstream; sections rated good are PROTECTED (their existing artifacts are reused, never regenerated, and they are suspected last when debugging). It renders to a temp file, QC-gates it, then replaces the original at the same path. If nothing was rated bad, the video is untouched.
-4. **The fixer patches the skills directly, in both directions.** No taste/preference document exists; the skills ARE the memory. Bad ratings become removal edits to the causing skill: prompt bans/rules/reweighting for prompt-driven stages, default-value changes for parameter-driven ones (captions, pacing, music level). Good ratings become reinforcement edits: keep-doing-this rules or positive exemplars in the owning prompt, and validated-by-user pins on parameter values. Edits generalize the why text, never hardcode one video; new bad feedback beats old reinforcement, and a reinforcement never overrides a standing ban. Skill patches are committed and pushed citing the mission.
-
 ## Conventions
 
 - **One skill per atomic op.** Never bundle two operations into one skill. Tempting helpers (e.g. "transcribe + burn-subtitles") belong as separate skills that share I/O contracts.
