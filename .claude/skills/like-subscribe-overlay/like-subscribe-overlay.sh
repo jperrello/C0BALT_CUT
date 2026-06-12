@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# like-subscribe-overlay: overlay a JS-rendered like/subscribe button animation
-# (assets/cta.mov — ProRes 4444 with alpha, built from cta.html by build-cta.sh)
-# on the last `dur` seconds of a finished short. The asset is time-stretched
+# like-subscribe-overlay: overlay a JS-rendered like/subscribe CTA animation
+# (assets/cta.mov — ProRes 4444 with alpha, built from cta.html by build-cta.sh;
+# features the channel gem avatar + @C0BALT_CUT handle) for `dur` seconds
+# starting at `pos` fraction of the clip (default 0.30 — early enough that
+# viewers who bail before the end still see it). The asset is time-stretched
 # (setpts) to fit dur and pinned to the lower third. Bell SFX layered under
 # the click.
 set -euo pipefail
@@ -9,9 +11,10 @@ set -euo pipefail
 input="${1:-}"
 out="${2:-}"
 dur="${3:-4.0}"
+pos="${4:-0.30}"
 
 if [[ -z "$input" || -z "$out" ]]; then
-  echo "usage: like-subscribe-overlay.sh <input> <out> [dur=4.0]" >&2
+  echo "usage: like-subscribe-overlay.sh <input> <out> [dur=4.0] [pos=0.30]" >&2
   exit 2
 fi
 [[ -f "$input" ]] || { echo "like-subscribe-overlay: input not found: $input" >&2; exit 2; }
@@ -25,7 +28,7 @@ if [[ ! -f "$asset" ]]; then
 fi
 
 meta="$out.lsmeta"
-sig="$dur|mov-v2-bottom-third-fullwidth"
+sig="$dur|$pos|mov-v3-branded-30pct"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -54,7 +57,8 @@ adur="$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
 
 # clamp dur so it fits the clip
 dur="$(python3 -c "print(min(float('$dur'), max(1.5, float('$vdur') - 0.2)))")"
-start="$(python3 -c "print(max(0.0, float('$vdur') - float('$dur')))")"
+# start at pos fraction of the clip, clamped so the CTA never spills past the end
+start="$(python3 -c "print(round(min(max(0.0, float('$pos') * float('$vdur')), max(0.0, float('$vdur') - float('$dur') - 0.2)), 4))")"
 # time-stretch factor: multiply input PTS by this to fit dur seconds.
 # factor < 1 => asset plays faster than its native rate.
 sf="$(python3 -c "print(round(float('$dur') / float('$adur'), 6))")"

@@ -187,7 +187,7 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     leveled="$dir/clip_$idx.leveled.mp4"
     bash "$(skill loudnorm)" "$marked" "$leveled"
 
-    # like-subscribe-overlay: animated CTA in the last 4s
+    # like-subscribe-overlay: branded CTA for ~4s at the 30% mark
     ctaed="$dir/clip_$idx.ctaed.mp4"
     bash "$(skill like-subscribe-overlay)" "$leveled" "$ctaed" 4.0 >/dev/null || cp "$leveled" "$ctaed"
 
