@@ -59,7 +59,7 @@ Atomic Claude Code skills, one per video-editing operation. Each skill lives at 
 
 **Stack:** whisper.cpp (local transcription) + Claude (semantic decisions, via host session or `/crew` tmux members — no API key) + ffmpeg (all media ops) + MediaPipe/OpenCV (faces, saliency) + PIL (all text rendering — the local ffmpeg has NO libass/drawtext, so every text overlay is a transparent PNG composited by ffmpeg).
 
-**No Anthropic API key.** Claude-driven skills (`segment-topics`, `pick-segments`, `verify-coherence`, `bookend-trim`, `trim-filler`, `verify-bookends`, `chunk-captions`, `broll-pick`, `generate-title`, `pick-mood`) run via `claude -p` or long-lived Claude tmux panes on the user's subscription. mcptube's own `discover` command needs an LLM API key and is therefore FORBIDDEN — use the mcptube-bundled `yt-dlp` ytsearch instead.
+**No Anthropic API key.** Claude-driven skills (`segment-topics`, `pick-segments`, `verify-coherence`, `pick-title-styles`, `bookend-trim`, `trim-filler`, `verify-bookends`, `chunk-captions`, `broll-pick`, `generate-title`, `pick-mood`) run via `claude -p` or long-lived Claude tmux panes on the user's subscription. mcptube's own `discover` command needs an LLM API key and is therefore FORBIDDEN — use the mcptube-bundled `yt-dlp` ytsearch instead.
 
 ## Entrypoints
 
@@ -76,7 +76,7 @@ bash start.sh url1 url2 ...      # batch, sequential per video
 bash shorts.sh <url> [n=5] [dmin=20] [dmax=60]
 ```
 
-`start.sh` phases: **1** srcprep pane (ingest + transcribe) + analysis pane (segment-topics → pick-segments → verify-coherence) → **per-span lanes**: `SHORTS_MAX_PAR` lane workers each pull the next unclaimed span (mkdir-locked counter) and chain its three phases end-to-end — **edit** (bookend-trim → cut/assemble → trim-filler → cut-filler → tighten-pace → verify-bookends → fill-vertical), **captions** (chunk-captions → broll-pick → broll-composite → burn-subtitles → generate-title → title-transition → brand-overlays → loudnorm), **completion** (like-subscribe-overlay → pick-mood → bg-music → qc-clip → name-short → save-local) — so early spans land in `./output/` while later spans are still editing, and Claude-wait in one lane overlaps ffmpeg in another. broll-cleanup runs once at end. Resume markers: edit skips on `clip_NN.vert.mp4` + `.path` sidecars; captions on `clip_NN.leveled.mp4`; completion on `clip_NN.done.completion`. Failures write `clip_NN.fail[.captions|.completion]` and cancel the rest of that span only; every phase attempt deletes its own stale marker first, so retried spans un-skip themselves (shorts-8m6).
+`start.sh` phases: **1** srcprep pane (ingest + transcribe) + analysis pane (segment-topics → pick-segments → verify-coherence → pick-title-styles) → **per-span lanes**: `SHORTS_MAX_PAR` lane workers each pull the next unclaimed span (mkdir-locked counter) and chain its three phases end-to-end — **edit** (bookend-trim → cut/assemble → trim-filler → cut-filler → tighten-pace → verify-bookends → fill-vertical), **captions** (chunk-captions → broll-pick → broll-composite → burn-subtitles → generate-title → title-transition → brand-overlays → loudnorm), **completion** (like-subscribe-overlay → pick-mood → bg-music → qc-clip → name-short → save-local) — so early spans land in `./output/` while later spans are still editing, and Claude-wait in one lane overlaps ffmpeg in another. broll-cleanup runs once at end. Resume markers: edit skips on `clip_NN.vert.mp4` + `.path` sidecars; captions on `clip_NN.leveled.mp4`; completion on `clip_NN.done.completion`. Failures write `clip_NN.fail[.captions|.completion]` and cancel the rest of that span only; every phase attempt deletes its own stale marker first, so retried spans un-skip themselves (shorts-8m6).
 
 ## The Pipeline (canonical — every skill below MUST run on a full pipeline invocation)
 
@@ -87,6 +87,7 @@ source video
   ├─ segment-topics   (Claude → topics.json)
   ├─ pick-segments    (Claude over transcript + RMS + topics → segments.raw.json, N spans; each span carries `cuts`: 1-3 within-topic source ranges assembled into one story)
   ├─ verify-coherence (tighten incoherent spans to the dominant topic → segments.coherent.json; multi-cut spans pass through untouched)
+  ├─ pick-title-styles (Claude, ONE batched call → title_style per span: slam|typewriter|glitch|bounce|cinematic; fit wins, variety as tiebreak, ≤⌈N/2⌉ per style, soft bias against the .recent log; any failure → least-used round-robin, never fatal)
   ├─ bookend-trim     (Claude snaps each span's [t0,t1] to sentence boundaries → segments.json; for multi-cut, snaps the first cut's start + last cut's end)
   └─ per span:
        cut-clip (assemble: when `cuts` has >1 range, cut each precisely + concat into one clip; assemble.py builds the joined clip-local transcript)
@@ -99,7 +100,7 @@ source video
         → broll-pick                   (Claude contextual/scene anchors → mcptube/yt-dlp cutaways → broll_plan.json; vision verify judges tonal fit + rejects literal-but-wrong; per-clip slot names, dense ~6-10 windows, BROLL_VISION_CAP default 16)
         → broll-composite              (full-frame hard-cut cutaways onto the vertical clip, saliency-cropped not center; podcast audio continuous)
         → burn-subtitles               (chunk-karaoke PNG overlay, RMS-aligned, burned ON TOP of the b-roll)
-        → generate-title + title-transition (Claude title ≤7 words ALL-CAPS → silent animated intro card, pop-in + flash + shake)
+        → generate-title + title-transition (Claude title ≤7 words ALL-CAPS → animated intro card in the span's title_style, synthesized SFX mixed under the clip audio)
         → brand-overlays               (source-credit TOP chyron y≈4% + @C0BALT_CUT watermark y≈97.5% composited in ONE ffmpeg pass; falls back to the standalone source-credit → watermark two-pass path)
         → loudnorm                     (two-pass to -14 LUFS / -1.5 dBTP)
         → like-subscribe-overlay       (animated CTA in the last ~4s + bell SFX)
@@ -119,7 +120,7 @@ source video
 - `broll-pick` anchors are CONTEXTUAL/scene-level, not literal keyword objects — footage must match the story's tone (a tense "red dot" beat wants a sniper/laser sight, NOT a cat laser toy). Vision verify is given the spoken context and rejects literal-but-wrong matches. Aim dense (~6-10 windows where a sensible visual exists). B-roll files are namespaced per clip (`<clip>_broll_NN.<ext>`) in the shared `broll/` dir — NEVER reuse bare `broll_NN.mp4` slot names across spans (cross-span contamination bug).
 - `broll-pick` discovery uses the mcptube-bundled `yt-dlp` ytsearch, NOT `mcptube discover` (the latter needs an LLM API key the stack forbids). Vision verify via Claude; candidate prep (ingest + frame grids) runs CONCURRENTLY and verification is BATCHED — up to `BROLL_BATCH` (default 4) candidates judged per vision round-trip, with `BROLL_VISION_CAP` (default 16) bounding total candidates judged, not calls. Each window gets at most 2 query attempts (original + one literal↔metaphorical rewrite; rewrites are also batched into one call).
 - `broll-cleanup` runs exactly ONCE at end of run, evicting only `video_id`s in each `broll_plan.json`'s `ingested_video_ids` — never the podcast source. It must never modify or delete `broll_plan.json`.
-- `title-transition` is mandatory and runs AFTER `burn-subtitles`, BEFORE the brand overlays. The title text comes from `generate-title`.
+- `title-transition` is mandatory and runs AFTER `burn-subtitles`, BEFORE the brand overlays. The title text comes from `generate-title`; the animation style comes from the span's `title_style`, assigned by `pick-title-styles` (default `slam` when absent). Five styles — slam (hype), typewriter (true crime), glitch (tech), bounce (comedy), cinematic (documentary) — each a PIL frame sequence with synthesized SFX mixed under the clip audio through a limiter. A sixth `news` style was prototyped and CUT after review — do not resurrect it. `pick-title-styles` is best-effort/non-fatal: on any failure spans fall back deterministically and the run continues.
 - `bookend-trim` runs AFTER `verify-coherence` and BEFORE `cut-clip`. It snaps each span's `[t0, t1]` to a clean sentence boundary so shorts don't end mid-sentence (whisper output has punctuation stripped, so Claude infers boundaries — heuristics on `.!?` won't work).
 - `like-subscribe-overlay` runs AFTER `loudnorm` and BEFORE `bg-music`. It overlays an animated CTA on the last ~4s of the clip.
 - `brand-overlays` runs AFTER `title-transition` and BEFORE `loudnorm`. It bakes BOTH persistent brand marks in one encode: the "Original video: <title>" credit as a TOP chyron (banner top at y≈4%, title read from `work/<id>/ingest.json`, clear of the lower-third captions and the centered title card) and the `@C0BALT_CUT` channel mark bottom-center (bottom-anchored at y≈97.5% — the vertical opposite). Brand colors from `brand/BRAND.md`: Platinum `#E8ECF1` type with the slashed-zero in Sapphire Glow `#2E6BFF`. The CTA overlay composites on top of the watermark in the last ~4s, which is intended. The standalone `source-credit` and `watermark` skills remain the single-overlay atomic ops (and the orchestrator's fallback path) and own the PNG renderers brand-overlays reuses.
@@ -140,7 +141,7 @@ Every source gets `work/<sha1(url)[:10]>/`. Source-level files:
 | `topics.json` | segment-topics | `{topics:[{t0,t1,title,summary}]}` |
 | `segments.raw.json` | pick-segments | `{shorts:[{t0,t1,cuts,topic,rationale,title_suggestion,hook_score,structure_score,overall_score}]}` |
 | `segments.coherent.json` | verify-coherence | same + `coherence_verdict`/`coherence_note` |
-| `segments.json` | bookend-trim | final spans + `bookend_note` |
+| `segments.json` | bookend-trim + pick-title-styles | final spans + `bookend_note` + `title_style`/`title_style_note` |
 | `broll/` | broll-pick | downloaded cutaways `<clip>_broll_NN.<ext>` (evicted by broll-cleanup) |
 | `_pane/` | pane.sh | per-step `in.txt`/`out.txt`/`out.done` for tmux Claude dispatch |
 
@@ -180,6 +181,7 @@ shorts/
 ├── songs/.recent              # last-5 track blacklist (bg-music)
 ├── samples/title-sfx/         # title-card SFX reference samples
 ├── reference_shorts/          # target-look frame grabs used by the SPECs
+├── demos/title-styles/        # demo.sh renders all 5 title styles on any clip (out/ gitignored)
 ├── work/<id>/                 # per-source working dirs (see Artifact Map above)
 ├── output/<source-slug>/      # finished shorts, <title-slug>.mp4
 ├── .agents/                   # STALE gitignored copy of old skills (has retired fit-vertical/reframe-vertical) — never edit
@@ -195,6 +197,7 @@ shorts/
         ├── segment-topics/    # segment-topics.sh + build_prompt/parse_reply.py: Claude topic chapters
         ├── pick-segments/     # pick-segments.sh + rms.py + build_prompt/parse_reply.py: Claude span picks w/ cuts + hook scores
         ├── verify-coherence/  # verify-coherence.sh: Claude keep/tighten gate per span
+        ├── pick-title-styles/ # pick-title-styles.sh + build_prompt/parse_reply.py: ONE batched Claude call assigns title_style per span (fit > variety > recency; .recent log gitignored)
         ├── bookend-trim/      # bookend-trim.sh + trim.py: Claude sentence-boundary snap (±6s)
         │   # — per-span edit phase —
         ├── cut-clip/          # cut-clip.sh: ffmpeg [t0,t1] trim (stream-copy or reencode)
@@ -211,7 +214,7 @@ shorts/
         ├── burn-subtitles/    # burn-subtitles.sh + burn_subtitles.py: PIL PNG karaoke (Impact, Sapphire active word, RMS-aligned)
         │   # — finishing phase —
         ├── generate-title/    # generate-title.sh: Claude ≤7-word ALL-CAPS third-person title
-        ├── title-transition/  # title-transition.sh + render_title.py: pop-in title card + flash + shake (2.5s)
+        ├── title-transition/  # title-transition.sh + styles.py + sfx.py: styled intro card (slam/typewriter/glitch/bounce/cinematic) as PNG frame sequence + synthesized SFX bed
         ├── brand-overlays/    # brand-overlays.sh: credit + watermark PNGs in ONE ffmpeg pass (canonical; reuses the two renderers below)
         ├── source-credit/     # source-credit.sh + render_credit.py: top chyron "Original video: <title>" (y≈4%) — standalone/fallback
         ├── watermark/         # watermark.sh + render_watermark.py: @C0BALT_CUT bottom mark (y≈97.5%) — standalone/fallback

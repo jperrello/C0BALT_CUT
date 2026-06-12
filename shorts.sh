@@ -58,6 +58,11 @@ step "bookend-trim"
 segments="$dir/segments.json"
 bash "$(skill bookend-trim)" "$segments_coh" "$transcript" "$segments" 6.0 "$dmin" >/dev/null || die "bookend-trim"
 
+# 7c. pick-title-styles (one batched call; best-effort, defaults to slam) ---
+step "pick-title-styles"
+bash "$(skill pick-title-styles)" "$segments" "$transcript" "$segments" >/dev/null \
+  || echo "shorts: pick-title-styles failed — spans default to slam" >&2
+
 count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["shorts"]))' "$segments")"
 echo "shorts: $count surviving span(s) after coherence check" >&2
 [[ "$count" -gt 0 ]] || die "no spans survived verify-coherence"
@@ -166,8 +171,10 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     title="$(cat "$title_file")"
     echo "    title: $title" >&2
 
+    # style assigned by pick-title-styles; absent -> slam
+    style="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1]))["shorts"][int(sys.argv[2])]; print(s.get("title_style") or "slam")' "$segments" "$i")"
     titled="$dir/clip_$idx.titled.mp4"
-    bash "$(skill title-transition)" "$sub" "$title" "$titled" >/dev/null
+    bash "$(skill title-transition)" "$sub" "$title" "$titled" "$style" >/dev/null
 
     # source-credit: persistent "Original video: <title>" top chyron
     credited="$dir/clip_$idx.credited.mp4"

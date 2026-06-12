@@ -332,7 +332,18 @@ bash "$(skill verify-coherence)" "$seg_raw" "$tx" "$seg_coh" "$dmin" --pane "$an
 
 # bookend-trim was moved to phase 2 per spec; coherent spans become segments.json
 # directly as the per-span input. Each editor pane will re-snap its own span.
-cp "$seg_coh" "$seg_final"
+# Only refresh when coherence actually re-ran — an unconditional cp would wipe
+# pick-title-styles' fields on every resume and force a redundant re-pick.
+if [[ ! -f "$seg_final" || "$seg_coh" -nt "$seg_final" ]]; then
+  cp "$seg_coh" "$seg_final"
+fi
+
+# pick-title-styles: ONE batched call assigns a title-card style per span
+# (fit first, variety as tiebreak). Best-effort: on failure spans default to
+# slam at title-transition time.
+log "[phase 1 / analysis] pick-title-styles"
+bash "$(skill pick-title-styles)" "$seg_final" "$tx" "$seg_final" --pane "$an" \
+  || log "[phase 1 / analysis] pick-title-styles failed — spans default to slam"
 count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["shorts"]))' "$seg_final")"
 log "[phase 1] $count span(s) survived coherence check"
 [[ "$count" -gt 0 ]] || { log "FATAL: no spans survived"; exit 4; }
@@ -401,6 +412,7 @@ json.dump({
     "topic": s.get("topic", ""),
     "rationale": s.get("rationale", ""),
     "title_suggestion": s.get("title_suggestion", ""),
+    "title_style": s.get("title_style", "slam"),
 }, open(sys.argv[3], "w"), indent=2)' "$seg_final" "$i" "$title_ctx" || true
 
   log "[phase 2 / span $idx] editor pane $ed  range=[$t0 .. $t1]"
@@ -584,9 +596,16 @@ run_phase3_captions() {
   local title; title="$(cat "$title_file")"
   log "[phase 3 / span $idx / captions] title=\"$title\""
 
-  log "[phase 3 / span $idx / captions] title-transition"
+  # style assigned by pick-title-styles, carried in the title-context sidecar;
+  # absent (pre-feature resume) -> slam.
+  local style
+  style="$(python3 -c '
+import json, sys
+try: print(json.load(open(sys.argv[1])).get("title_style") or "slam")
+except Exception: print("slam")' "$title_ctx")"
+  log "[phase 3 / span $idx / captions] title-transition (style=$style)"
   local titled="$dir/clip_${idx}.titled.mp4"
-  bash "$(skill title-transition)" "$sub" "$title" "$titled" >/dev/null || {
+  bash "$(skill title-transition)" "$sub" "$title" "$titled" "$style" >/dev/null || {
     log "[phase 3 / span $idx / captions] title-transition FAILED"
     echo "title-transition" > "$dir/clip_${idx}.fail.captions"; return 1
   }

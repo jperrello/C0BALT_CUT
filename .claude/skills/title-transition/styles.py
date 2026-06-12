@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# render a title-transition style as a full-frame RGBA PNG sequence + events.json
-# (SFX cue list) + label.png (style tag for the demo). one style per invocation.
+# render a title style as a full-frame RGBA PNG sequence + events.json (SFX cue
+# list). one style per invocation. optional 8th arg renders a corner label.png
+# (demo use only — production passes no label).
 # usage: styles.py <style> <title> <outdir> <W> <H> <dur> <fps> [label]
 import json, math, os, random, sys
 from PIL import Image, ImageDraw, ImageFont
@@ -10,7 +11,7 @@ title = sys.argv[2].strip().upper()
 outdir = sys.argv[3]
 W, H = int(sys.argv[4]), int(sys.argv[5])
 dur, fps = float(sys.argv[6]), int(sys.argv[7])
-label = sys.argv[8] if len(sys.argv) > 8 else style.upper()
+label = sys.argv[8] if len(sys.argv) > 8 else ""
 
 IMPACT = "/System/Library/Fonts/Supplemental/Impact.ttf"
 COURIER = "/System/Library/Fonts/Supplemental/Courier New Bold.ttf"
@@ -22,7 +23,6 @@ WHITE = (245, 245, 240, 255)
 PLAT = (232, 236, 241, 255)
 ACCENT = (46, 107, 255, 255)  # Sapphire Glow #2E6BFF
 STROKE = (0, 0, 0, 255)
-CARBON = (16, 20, 24, 235)
 
 STOPS = {"THE","A","AN","AND","OR","OF","TO","IN","ON","AT","FOR","FROM",
          "IS","ARE","WAS","WERE","BE","BEEN","BEING","HE","SHE","IT","THEY",
@@ -140,10 +140,6 @@ def blank():
 
 def ease_out(p):
     return 1 - (1 - p) ** 3
-
-
-def ease_in(p):
-    return p ** 3
 
 
 def elastic(p):
@@ -370,41 +366,6 @@ def bounce():
     return fr, ev
 
 
-def news():
-    fi = ttc(FUTURA, "condensed extrabold")
-    fs, lines = fit(FUTURA, index=fi, maxw=int(W * 0.78), top=120)
-    text = render(lines, FUTURA, fs, 1.0, WHITE, ACCENT, index=fi, strokew=max(2, fs // 30))
-    bh = text.height + int(fs * 0.55)
-    bar = Image.new("RGBA", (W, bh), CARBON)
-    d = ImageDraw.Draw(bar)
-    d.rectangle((0, 0, 18, bh), fill=ACCENT)
-    d.rectangle((0, bh - 7, W, bh), fill=ACCENT)
-    by = CY - bh // 2
-    tx, ty = (W - text.width) // 2, by + (bh - text.height) // 2
-    slide, wend, outt = 0.22, 0.55, 0.28
-
-    def fr(t):
-        c = blank()
-        x = 0.0
-        wipe = 1.0
-        if t < slide:
-            x = -W * (1 - ease_out(t / slide))
-            wipe = 0.0
-        elif t < wend:
-            wipe = ease_out((t - slide) / (wend - slide))
-        elif t >= dur - outt:
-            x = W * ease_in(clamp((t - (dur - outt)) / outt, 0, 1))
-        c.alpha_composite(bar, (int(x), by))
-        tw = int(text.width * wipe)
-        if tw > 2:
-            c.alpha_composite(text.crop((0, 0, tw, text.height)), (int(tx + x), ty))
-        return c
-
-    return fr, [{"t": 0.0, "kind": "whoosh", "dur": slide + 0.06, "up": 1},
-                {"t": 0.24, "kind": "ident"},
-                {"t": dur - outt, "kind": "whoosh", "dur": outt, "up": 0}]
-
-
 def cinematic():
     di = ttc(DIDOT, "bold")
     tr0, tr1 = 0.42, 0.05
@@ -483,7 +444,7 @@ def cinematic():
 
 
 BUILDERS = {"slam": slam, "typewriter": typewriter, "glitch": glitch,
-            "bounce": bounce, "news": news, "cinematic": cinematic}
+            "bounce": bounce, "cinematic": cinematic}
 
 fr, events = BUILDERS[style]()
 os.makedirs(outdir, exist_ok=True)
@@ -491,13 +452,14 @@ n = round(dur * fps)
 for k in range(n):
     fr(k / fps).save(os.path.join(outdir, f"f_{k+1:04d}.png"))
 
-lf = ImageFont.truetype(IMPACT, 42)
-tw = lf.getlength(label)
-li = Image.new("RGBA", (int(tw + 48), 74), (0, 0, 0, 0))
-d = ImageDraw.Draw(li)
-d.rounded_rectangle((0, 0, li.width - 1, 73), radius=16, fill=(10, 12, 16, 200))
-d.text((24, 12), label, font=lf, fill=PLAT)
-li.save(os.path.join(outdir, "label.png"))
+if label:
+    lf = ImageFont.truetype(IMPACT, 42)
+    tw = lf.getlength(label)
+    li = Image.new("RGBA", (int(tw + 48), 74), (0, 0, 0, 0))
+    d = ImageDraw.Draw(li)
+    d.rounded_rectangle((0, 0, li.width - 1, 73), radius=16, fill=(10, 12, 16, 200))
+    d.text((24, 12), label, font=lf, fill=PLAT)
+    li.save(os.path.join(outdir, "label.png"))
 
 json.dump({"style": style, "dur": dur, "fps": fps, "events": events},
           open(os.path.join(outdir, "events.json"), "w"), indent=1)

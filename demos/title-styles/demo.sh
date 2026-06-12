@@ -5,7 +5,8 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
-base="${1:-$root/work/11d15aee38/clip_01.sub.mp4}"
+skill="$root/.claude/skills/title-transition"
+base="${1:-$root/work/8b2562962d/clip_01.sub.mp4}"
 len="${2:-7}"
 out="$here/out"
 fps=30
@@ -21,7 +22,6 @@ title_for() {
     typewriter) echo "THE CASE NOBODY COULD SOLVE" ;;
     glitch)     echo "AI JUST CHANGED EVERYTHING" ;;
     bounce)     echo "HIS DRIVE THRU NIGHTMARE" ;;
-    news)       echo "MRBEAST BUILT A WHOLE CITY" ;;
     cinematic)  echo "THE PRICE OF GENIUS" ;;
   esac
 }
@@ -29,18 +29,17 @@ title_for() {
 dur_for() {
   case "$1" in
     slam) echo 2.2 ;; typewriter) echo 3.0 ;; glitch) echo 2.4 ;;
-    bounce) echo 2.4 ;; news) echo 2.8 ;; cinematic) echo 3.2 ;;
+    bounce) echo 2.4 ;; cinematic) echo 3.2 ;;
   esac
 }
 
 label_for() {
   case "$1" in
-    slam)       echo "1/6 SLAM - HYPE" ;;
-    typewriter) echo "2/6 TYPEWRITER - TRUE CRIME" ;;
-    glitch)     echo "3/6 GLITCH - TECH" ;;
-    bounce)     echo "4/6 BOUNCE - COMEDY" ;;
-    news)       echo "5/6 NEWS BAR - COMMENTARY" ;;
-    cinematic)  echo "6/6 CINEMATIC - DOCUMENTARY" ;;
+    slam)       echo "1/5 SLAM - HYPE" ;;
+    typewriter) echo "2/5 TYPEWRITER - TRUE CRIME" ;;
+    glitch)     echo "3/5 GLITCH - TECH" ;;
+    bounce)     echo "4/5 BOUNCE - COMEDY" ;;
+    cinematic)  echo "5/5 CINEMATIC - DOCUMENTARY" ;;
   esac
 }
 
@@ -58,16 +57,16 @@ bg_for() {
   esac
 }
 
-styles=(slam typewriter glitch bounce news cinematic)
+styles=(slam typewriter glitch bounce cinematic)
 i=0
 files=()
 for s in "${styles[@]}"; do
   i=$((i+1))
   dur="$(dur_for "$s")"
   tmp="$(mktemp -d)"
-  echo "== [$i/6] $s: rendering frames + sfx" >&2
-  python3 "$here/styles.py" "$s" "$(title_for "$s")" "$tmp" "$W" "$H" "$dur" "$fps" "$(label_for "$s")"
-  python3 "$here/sfx.py" "$tmp/events.json" "$tmp/sfx.wav"
+  echo "== [$i/5] $s: rendering frames + sfx" >&2
+  python3 "$skill/styles.py" "$s" "$(title_for "$s")" "$tmp" "$W" "$H" "$dur" "$fps" "$(label_for "$s")"
+  python3 "$skill/sfx.py" "$tmp/events.json" "$tmp/sfx.wav"
   dst="$out/0${i}_${s}.mp4"
   ffmpeg -y -hide_banner -loglevel error \
     -i "$base" -framerate "$fps" -i "$tmp/f_%04d.png" -i "$tmp/sfx.wav" -i "$tmp/label.png" \
