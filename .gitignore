@@ -52,3 +52,7 @@ work/
 out/
 demos/title-styles/out/
 .claude/skills/pick-title-styles/.recent
+
+# local-only scratch (frame-grab references, one-off run helpers)
+reference_shorts/
+finish_phase4.sh
