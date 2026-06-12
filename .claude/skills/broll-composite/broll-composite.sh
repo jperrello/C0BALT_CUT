@@ -18,8 +18,9 @@ fi
 [[ -f "$plan"    ]] || { echo "broll-composite: plan not found: $plan" >&2; exit 2; }
 
 here="$(cd "$(dirname "$0")" && pwd)"
+sfx="${BROLL_SFX:-1}"
 mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
-sig="$(mtime "$in_clip")|$(mtime "$plan")|v1"
+sig="$(mtime "$in_clip")|$(mtime "$plan")|v2|sfx=$sfx"
 meta="$out.compmeta"
 if [[ -f "$out" && -f "$meta" && "$(cat "$meta")" == "$sig" ]]; then
   echo "broll-composite: cache hit at $out" >&2
@@ -56,11 +57,36 @@ while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args mid)
 while IFS= read -r -d '' a; do dec+=("$a"); done < <(vt_decode_args)
 while IFS= read -r -d '' a; do thr+=("$a"); done < <(vt_threads)
 
+# whoosh SFX on each cutaway in/out (BROLL_SFX=0 disables). The podcast audio
+# stays continuous — it is amix'd with the whoosh bed, never replaced.
+declare -a amap=(-map 0:a? -c:a copy)
+has_audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_type \
+  -of default=nw=1:nk=1 "$in_clip" 2>/dev/null || true)"
+if [[ "$sfx" != "0" && "$has_audio" == "audio" ]]; then
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  dur="$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$in_clip")"
+  python3 -c '
+import json,sys,os
+ps=[p for p in json.load(open(sys.argv[1])).get("picks",[]) if p.get("clip_path") and os.path.exists(p["clip_path"])]
+ev=[]
+for p in ps:
+    ev.append({"t":float(p["t0"]),"dir":"in"})
+    ev.append({"t":float(p["t1"]),"dir":"out"})
+json.dump(ev,open(sys.argv[2],"w"))' "$plan" "$tmp/events.json"
+  if python3 "$here/make_whoosh.py" "$tmp/whoosh.wav" "$dur" 44100 "$tmp/events.json" 2>/dev/null; then
+    inputs+=(-i "$tmp/whoosh.wav")
+    widx=$((n + 1))
+    flt="$flt;[0:a][$widx:a]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.97[aout]"
+    amap=(-map "[aout]" -c:a aac -b:a 192k)
+  fi
+fi
+
 if ffmpeg -y -hide_banner -loglevel error \
     "${dec[@]+"${dec[@]}"}" "${inputs[@]}" \
     -filter_complex "$flt" \
-    -map "[vout]" -map 0:a? \
-    "${venc[@]}" "${thr[@]}" -c:a copy -movflags +faststart \
+    -map "[vout]" "${amap[@]}" \
+    "${venc[@]}" "${thr[@]}" -movflags +faststart \
     "$out" 2>"$out.fferr"; then
   rm -f "$out.fferr"
   printf '%s' "$sig" > "$meta"

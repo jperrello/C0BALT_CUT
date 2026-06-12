@@ -20,9 +20,35 @@ mkdir -p "$dir"
 out="$dir/source.mp4"
 meta="$dir/ingest.json"
 
+heatmap_write() {
+  # $1: file with two lines of %(heatmap)j / %(chapters)j output ("NA" when absent)
+  python3 - "$1" "$dir/heatmap.json" <<'PY' || true
+import json, sys
+lines = open(sys.argv[1]).read().splitlines() + ["", ""]
+def grab(line):
+    try:
+        v = json.loads(line)
+        return v if isinstance(v, list) else []
+    except Exception:
+        return []
+hm, ch = grab(lines[0]), grab(lines[1])
+if not hm and not ch:
+    sys.exit(0)
+json.dump({"heatmap": hm, "chapters": ch}, open(sys.argv[2], "w"))
+print(f"ingest: heatmap.json ({len(hm)} replay points, {len(ch)} chapters)", file=sys.stderr)
+PY
+}
+
 if [[ -f "$out" && -f "$meta" ]]; then
   if grep -q "\"url\": \"$url\"" "$meta" 2>/dev/null; then
     echo "ingest: cache hit at $out" >&2
+    # backfill the replay heatmap for sources ingested before it was captured
+    if [[ ! -f "$dir/heatmap.json" ]]; then
+      yt-dlp --skip-download --print "%(heatmap)j" --print "%(chapters)j" "$url" \
+        > "$dir/.heatmap.raw" 2>/dev/null || true
+      heatmap_write "$dir/.heatmap.raw"
+      rm -f "$dir/.heatmap.raw"
+    fi
     cat "$meta"
     exit 0
   fi
@@ -34,8 +60,18 @@ yt-dlp -f 'bv*+ba/b' --merge-output-format mp4 \
   -o "$dir/source.%(ext)s" \
   --embed-metadata \
   --print-to-file "%(title)s" "$dir/.title.txt" \
+  --print-to-file "%(heatmap)j" "$dir/.heatmap.raw" \
+  --print-to-file "%(chapters)j" "$dir/.chapters.raw" \
   --no-progress \
   "$url" >&2
+
+# most-replayed heatmap + chapters -> heatmap.json (crowd-sourced engagement
+# prior for pick-segments; absent on low-view sources)
+if [[ -f "$dir/.heatmap.raw" ]]; then
+  cat "$dir/.heatmap.raw" "$dir/.chapters.raw" 2>/dev/null > "$dir/.hm.two" || true
+  heatmap_write "$dir/.hm.two"
+  rm -f "$dir/.hm.two"
+fi
 
 if [[ ! -f "$out" ]]; then
   # yt-dlp may have written a different ext, find and rename
@@ -80,4 +116,4 @@ with open(meta, "w") as f:
 print(json.dumps(data, indent=2))
 PY
 
-rm -f "$probe_file" "$dir/.title.txt"
+rm -f "$probe_file" "$dir/.title.txt" "$dir/.heatmap.raw" "$dir/.chapters.raw"

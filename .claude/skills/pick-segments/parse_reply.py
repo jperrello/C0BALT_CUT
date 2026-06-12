@@ -4,7 +4,32 @@ import json, re, sys
 
 reply_path, n, dmin, dmax, transcript_path = sys.argv[1:6]
 topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
+heatmap_path = sys.argv[7] if len(sys.argv) > 7 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
+
+heat = []
+if heatmap_path:
+    try:
+        heat = json.load(open(heatmap_path)).get("heatmap", [])
+    except (FileNotFoundError, ValueError):
+        heat = []
+heat_mean = (sum(float(p["value"]) for p in heat) / len(heat)) if heat else 0.0
+
+def replay_quotient(cuts):
+    # mean replay value across the span's cuts vs the source-wide mean.
+    # 1.0 = average source moment; >1 = viewers rewatched this region.
+    if not heat or heat_mean <= 0:
+        return None
+    tot = w = 0.0
+    for a, b in cuts:
+        for p in heat:
+            o = min(b, float(p["end_time"])) - max(a, float(p["start_time"]))
+            if o > 0:
+                tot += float(p["value"]) * o
+                w += o
+    if w <= 0:
+        return None
+    return tot / w / heat_mean
 
 topics = []
 if topics_path:
@@ -121,6 +146,13 @@ for sh in data.get("shorts", []):
     }
     if tp is not None:
         item["topic"] = tp.get("title", "")
+    rq = replay_quotient(cuts)
+    if rq is not None:
+        # crowd-validated replay overlap nudges the rank deterministically:
+        # +0 at source-average, capped at +1.5 for a 2x-replayed span
+        item["replay_quotient"] = round(rq, 2)
+        item["overall_score"] = round(
+            item["overall_score"] + min(1.5, max(0.0, (rq - 1.0) * 1.5)), 2)
     shorts.append(item)
 
 shorts.sort(key=lambda s: -s["overall_score"])

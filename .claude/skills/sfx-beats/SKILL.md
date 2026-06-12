@@ -1,55 +1,59 @@
 ---
 name: sfx-beats
-description: Mix synthesized riser/hit/stinger SFX into a short at detected tension peaks. Riser ends at the first pivot word ('but'/'therefore'/'so'/etc.) inside the middle 60% of the clip, a low impact hit lands at the loudest RMS-per-second peak after it, a soft outro stinger sits in the last 0.4s. All SFX synthesized with stdlib `wave` — no external assets.
+description: Mix synthesized SFX into a short. Two modes — comedy (CANONICAL, runs after burn-subtitles in the pipeline): Claude marks punchline/irony/insight beats and a vine boom / record scratch / ding lands on each; tension (on request only): riser ending at the first pivot word, low hit at the loudest RMS peak after it, soft outro stinger. All SFX synthesized with stdlib `wave` — no external assets. Comedy mode marks ZERO beats on non-comedic clips and passes through untouched.
 allowed-tools: Bash
 user-invocable: true
 ---
 
 # sfx-beats
 
-Sound design is emotional manipulation, not decoration. This skill places three
-SFX events on a finished clip's audio bed:
+Sound design is emotional manipulation, not decoration. Two modes:
 
-1. **Riser** (0.8s noise sweep up + pitched sweep) — ends *exactly* on the first
-   pivot word in the transcript that falls inside the middle 60% of the clip.
-   Pivots: `but`, `therefore`, `so`, `because`, `however`, `then`, `actually`.
-2. **Hit** (50–80Hz transient, ~0.22s) — at the highest RMS-per-second peak
-   strictly after the riser end.
-3. **Stinger** (440/660Hz bell, ~0.45s decay) — sits in the last 0.4s.
+## comedy (canonical — in the per-span chain after burn-subtitles)
 
-If no pivot word lands in the middle 60%, the riser+hit are skipped (low
-confidence) and only the stinger plays. All three are mixed at ~-18 dBFS so
-they sit under the speech bed; an `alimiter` keeps peaks ≤ 0.97.
+Claude reads the clip transcript and marks 0-4 beats where a meme SFX
+amplifies the moment:
+
+1. **boom** (vine boom, ~0.8s saturated 90→40Hz sub drop, LOUD on purpose) —
+   a punchline, absurd claim, or savage line landing.
+2. **scratch** (record scratch, ~0.32s back-and-forth filtered noise) — a
+   wait-WHAT irony pivot.
+3. **ding** (bell, 1318/2637Hz ring) — a sharp insight clicking into place.
+
+The prompt is explicitly conservative: a boom on a mediocre beat reads as
+cringe, so ZERO beats is a valid answer → passthrough copy. Beats are
+validated (known types, ≥2.5s apart, inside [1.0, dur-0.5], max 4). Any
+Claude/parse failure degrades to passthrough — never fatal. `SFX_COMEDY=0`
+skips the step in the orchestrators.
+
+## tension (on request only — NOT in the canonical chain)
+
+1. **Riser** (0.8s noise sweep) — ends exactly on the first pivot word
+   (`but`/`therefore`/`so`/...) inside the middle 60% of the clip.
+2. **Hit** (50–80Hz transient) — at the highest RMS peak after the riser.
+3. **Stinger** (440/660Hz bell) — in the last 0.4s.
+
+Tension SFX sit at ~-18dBFS under speech; comedy booms run hotter (~-7dB peak)
+because the boom IS the joke. An `alimiter` keeps the mix ≤0.97.
 
 ## Invoke
 
 ```
-.claude/skills/sfx-beats/sfx-beats.sh <input> <transcript.json> <out> [audio_rms.json]
+.claude/skills/sfx-beats/sfx-beats.sh <input> <transcript.json> <out> [mode=tension|comedy] [audio_rms.json] [--pane <tmux>]
 ```
 
-- `input`: video path (any aspect; designed for finished shorts)
-- `transcript.json`: word-timed transcript (from `transcribe`)
-- `out`: output video path
-- `audio_rms.json` (optional): per-second RMS energy. If omitted, computed
-  on the fly via `pick-segments/rms.py`.
+- `mode`: `tension` (default) or `comedy`
+- `audio_rms.json` (tension only): per-second RMS; computed on the fly if omitted
+- `--pane`: route the comedy Claude call through a long-lived tmux pane
 
 ## Output
 
-mp4 with video stream-copied (no re-encode) and audio re-encoded to AAC 192k
-after `amix` with the synthesized SFX bed. Prints the output path to stdout.
-Idempotent via `<out>.sfxmeta` (input + transcript mtimes).
+mp4 with video stream-copied and audio AAC 192k after `amix` with the SFX bed
+(or a passthrough copy when nothing is marked). Idempotent via `<out>.sfxmeta`
+(input + transcript mtimes + mode).
 
 ## How
 
-- `plan_sfx.py` scans the transcript for the earliest pivot word in the middle
-  60% of the clip and picks the RMS peak after it from `audio_rms.json`.
-- `make_sfx.py` renders one full-length stereo WAV with all three events placed
-  at the planned timestamps. Pure stdlib `wave`, same pattern as
-  `title-transition/make_sfx.py`. Riser pans L→R; the hit is centered; the
-  stinger is centered and slightly attenuated.
-- `sfx-beats.sh` `amix`es the SFX bed over the source audio.
-
-## Status
-
-Implemented — verified on `work/883ad50ade/clip_03.final.mp4` (riser placed at
-the word `actually`, hit on the post-pivot RMS peak, stinger in the last 0.4s).
+- comedy: `comedy_prompt.py` → `run_claude_step` → `parse_comedy.py` →
+  `make_sfx.py` renders the marked events into a full-length stereo WAV.
+- tension: `plan_sfx.py` picks pivot/peak deterministically → same renderer.

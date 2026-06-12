@@ -9,10 +9,10 @@ set -uo pipefail
 url="${1:-}"
 n="${2:-5}"
 dmin="${3:-20}"
-dmax="${4:-60}"
+dmax="${4:-40}"
 
 if [[ -z "$url" ]]; then
-  echo "usage: shorts.sh <youtube-url> [n=5] [dmin=20] [dmax=60]" >&2
+  echo "usage: shorts.sh <youtube-url> [n=5] [dmin=20] [dmax=40]" >&2
   exit 2
 fi
 
@@ -149,6 +149,13 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     vert="$dir/clip_$idx.vert.mp4"
     bash "$(skill fill-vertical)" "$clip" "$vert" >/dev/null
 
+    # zoom-punch: deterministic punch-ins at RMS-peak words (ZOOM_PUNCH=0 skips)
+    if [[ "${ZOOM_PUNCH:-1}" != "0" ]]; then
+      zoomed="$dir/clip_$idx.zoom.mp4"
+      bash "$(skill zoom-punch)" "$vert" "$ctx" "$zoomed" >/dev/null || cp "$vert" "$zoomed"
+      vert="$zoomed"
+    fi
+
     # chunk-captions: clip transcript -> phrase chunks (kills the rolling scroll)
     # (moved ahead of broll-pick so cutaway windows snap to whole chunk boundaries)
     chunks="$dir/clip_$idx.chunks.json"
@@ -164,6 +171,13 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
 
     sub="$dir/clip_$idx.sub.mp4"
     bash "$(skill burn-subtitles)" "$brolled" "$chunks" "$sub" chunks >/dev/null
+
+    # sfx-beats comedy: meme SFX on Claude-marked punchline/irony/insight beats
+    if [[ "${SFX_COMEDY:-1}" != "0" ]]; then
+      sfxed="$dir/clip_$idx.sfx.mp4"
+      bash "$(skill sfx-beats)" "$sub" "$ctx" "$sfxed" comedy >/dev/null || cp "$sub" "$sfxed"
+      sub="$sfxed"
+    fi
 
     # generate-title: per-clip third-person ALL-CAPS hook title
     title_file="$dir/clip_$idx.title.txt"

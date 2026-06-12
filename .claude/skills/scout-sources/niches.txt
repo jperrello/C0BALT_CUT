@@ -1,0 +1,11 @@
+# default seed queries — one per line, # comments ignored.
+# seeded from channel analytics: big-name humor pods + productivity/AI/
+# self-improvement debunking are what @C0BALT_CUT's audience clicks.
+huberman lab podcast
+mrbeast interview podcast
+theo von podcast episode
+diary of a ceo interview
+dopamine neuroscience explained
+productivity psychologist interview
+ai software engineering talk
+chatgpt openai interview

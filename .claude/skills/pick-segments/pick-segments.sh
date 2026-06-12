@@ -22,6 +22,10 @@ if [[ -z "$topics" ]]; then
   cand="$(dirname "$transcript")/topics.json"
   [[ -f "$cand" ]] && topics="$cand"
 fi
+# Replay heatmap (most-replayed graph captured by ingest) — engagement prior
+heatmap=""
+hm_cand="$(dirname "$transcript")/heatmap.json"
+[[ -f "$hm_cand" ]] && heatmap="$hm_cand"
 if [[ ! -f "$transcript" ]]; then
   echo "pick-segments: transcript not found: $transcript" >&2
   exit 2
@@ -38,6 +42,10 @@ if [[ -f "$out" ]]; then
   if [[ -n "$topics" && -f "$topics" ]]; then
     tp_mtime="$(stat -f %m "$topics" 2>/dev/null || stat -c %Y "$topics")"
     [[ "$tp_mtime" -gt "$in_mtime" ]] && in_mtime="$tp_mtime"
+  fi
+  if [[ -n "$heatmap" ]]; then
+    hm_mtime="$(stat -f %m "$heatmap" 2>/dev/null || stat -c %Y "$heatmap")"
+    [[ "$hm_mtime" -gt "$in_mtime" ]] && in_mtime="$hm_mtime"
   fi
   out_mtime="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
   if [[ "$out_mtime" -ge "$in_mtime" ]]; then
@@ -59,7 +67,7 @@ else
 fi
 
 prompt_file="$tmp/prompt.txt"
-python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" "${topics:-}" > "$prompt_file"
+python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" "${topics:-}" "${heatmap:-}" > "$prompt_file"
 
 reply="$tmp/reply.txt"
 run_claude_step pick-segments "$prompt_file" "$reply" 2>"$tmp/claude.err" || {
@@ -68,6 +76,6 @@ run_claude_step pick-segments "$prompt_file" "$reply" 2>"$tmp/claude.err" || {
   exit 1
 }
 
-python3 "$here/parse_reply.py" "$reply" "$n" "$dmin" "$dmax" "$transcript" "${topics:-}" > "$out"
+python3 "$here/parse_reply.py" "$reply" "$n" "$dmin" "$dmax" "$transcript" "${topics:-}" "${heatmap:-}" > "$out"
 echo "pick-segments: wrote $out" >&2
 echo "$out"

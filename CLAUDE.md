@@ -59,7 +59,7 @@ Atomic Claude Code skills, one per video-editing operation. Each skill lives at 
 
 **Stack:** whisper.cpp (local transcription) + Claude (semantic decisions, via host session or `/crew` tmux members — no API key) + ffmpeg (all media ops) + MediaPipe/OpenCV (faces, saliency) + PIL (all text rendering — the local ffmpeg has NO libass/drawtext, so every text overlay is a transparent PNG composited by ffmpeg).
 
-**No Anthropic API key.** Claude-driven skills (`segment-topics`, `pick-segments`, `verify-coherence`, `pick-title-styles`, `bookend-trim`, `trim-filler`, `verify-bookends`, `chunk-captions`, `broll-pick`, `generate-title`, `pick-mood`) run via `claude -p` or long-lived Claude tmux panes on the user's subscription. mcptube's own `discover` command needs an LLM API key and is therefore FORBIDDEN — use the mcptube-bundled `yt-dlp` ytsearch instead.
+**No Anthropic API key.** Claude-driven skills (`segment-topics`, `pick-segments`, `verify-coherence`, `pick-title-styles`, `bookend-trim`, `trim-filler`, `verify-bookends`, `chunk-captions`, `broll-pick`, `sfx-beats` comedy mode, `generate-title`, `pick-mood`) run via `claude -p` or long-lived Claude tmux panes on the user's subscription. mcptube's own `discover` command needs an LLM API key and is therefore FORBIDDEN — use the mcptube-bundled `yt-dlp` ytsearch instead.
 
 ## Entrypoints
 
@@ -73,19 +73,22 @@ bash start.sh <youtube-url>      # fresh run
 bash start.sh <11-char-yt-id>    # bare ID
 bash start.sh work/<source-id>   # reuse an already-ingested source
 bash start.sh url1 url2 ...      # batch, sequential per video
-bash shorts.sh <url> [n=5] [dmin=20] [dmax=60]
+bash shorts.sh <url> [n=5] [dmin=20] [dmax=40]
+bash .claude/skills/scout-sources/scout-sources.sh   # what to clip NEXT (ranked candidates)
 ```
 
-`start.sh` phases: **1** srcprep pane (ingest + transcribe) + analysis pane (segment-topics → pick-segments → verify-coherence → pick-title-styles) → **per-span lanes**: `SHORTS_MAX_PAR` lane workers each pull the next unclaimed span (mkdir-locked counter) and chain its three phases end-to-end — **edit** (bookend-trim → cut/assemble → trim-filler → cut-filler → tighten-pace → verify-bookends → fill-vertical), **captions** (chunk-captions → broll-pick → broll-composite → burn-subtitles → generate-title → title-transition → brand-overlays → loudnorm), **completion** (like-subscribe-overlay → pick-mood → bg-music → qc-clip → name-short → save-local) — so early spans land in `./output/` while later spans are still editing, and Claude-wait in one lane overlaps ffmpeg in another. broll-cleanup runs once at end. Resume markers: edit skips on `clip_NN.vert.mp4` + `.path` sidecars; captions on `clip_NN.leveled.mp4`; completion on `clip_NN.done.completion`. Failures write `clip_NN.fail[.captions|.completion]` and cancel the rest of that span only; every phase attempt deletes its own stale marker first, so retried spans un-skip themselves (shorts-8m6).
+`start.sh` phases: **1** srcprep pane (ingest + transcribe) + analysis pane (segment-topics → pick-segments → verify-coherence → pick-title-styles) → **per-span lanes**: `SHORTS_MAX_PAR` lane workers each pull the next unclaimed span (mkdir-locked counter) and chain its three phases end-to-end — **edit** (bookend-trim → cut/assemble → trim-filler → cut-filler → tighten-pace → verify-bookends → fill-vertical), **captions** (zoom-punch → chunk-captions → broll-pick → broll-composite → burn-subtitles → sfx-beats comedy → generate-title → title-transition → brand-overlays → loudnorm), **completion** (like-subscribe-overlay → pick-mood → bg-music → qc-clip → name-short → save-local) — so early spans land in `./output/` while later spans are still editing, and Claude-wait in one lane overlaps ffmpeg in another. broll-cleanup runs once at end. Resume markers: edit skips on `clip_NN.vert.mp4` + `.path` sidecars; captions on `clip_NN.leveled.mp4`; completion on `clip_NN.done.completion`. Failures write `clip_NN.fail[.captions|.completion]` and cancel the rest of that span only; every phase attempt deletes its own stale marker first, so retried spans un-skip themselves (shorts-8m6).
 
 ## The Pipeline (canonical — every skill below MUST run on a full pipeline invocation)
 
+`scout-sources` is the optional step BEFORE the pipeline: deterministic source discovery (keyless yt-dlp outlier scoring — views/day velocity, views-per-sub ratio, comment engagement, replay-heatmap peakiness) ranking niche-search candidates into `work/_scout/candidates.json`. Feed the winner to `start.sh`. Not part of the per-video chain.
+
 ```
 source video
-  ├─ ingest           (yt-dlp → work/<id>/source.mp4 + ingest.json)
+  ├─ ingest           (yt-dlp → work/<id>/source.mp4 + ingest.json + heatmap.json [most-replayed graph + chapters; absent on low-view sources, backfilled on cache-hit])
   ├─ transcribe       (whisper.cpp local → transcript.json, word-level timestamps)
   ├─ segment-topics   (Claude → topics.json)
-  ├─ pick-segments    (Claude over transcript + RMS + topics → segments.raw.json, N spans; each span carries `cuts`: 1-3 within-topic source ranges assembled into one story)
+  ├─ pick-segments    (Claude over transcript + RMS + topics + replay heatmap → segments.raw.json, N spans; each span carries `cuts`: 1-3 within-topic source ranges assembled into one story; spans over most-replayed peaks get a deterministic overall_score bonus + `replay_quotient` field)
   ├─ verify-coherence (tighten incoherent spans to the dominant topic → segments.coherent.json; multi-cut spans pass through untouched)
   ├─ pick-title-styles (Claude, ONE batched call → title_style per span: slam|typewriter|glitch|bounce|cinematic; fit wins, variety as tiebreak, ≤⌈N/2⌉ per style, soft bias against the .recent log; any failure → least-used round-robin, never fatal)
   ├─ bookend-trim     (Claude snaps each span's [t0,t1] to sentence boundaries → segments.json; for multi-cut, snaps the first cut's start + last cut's end)
@@ -96,10 +99,12 @@ source video
         → tighten-pace                 (collapse remaining inter-word silences >0.18s; re-times the transcript)
         → verify-bookends              (Claude VISION gate on first/last 1.5s: keep / inward-trim / drop; inward-only, never extends)
         → fill-vertical                (1080x1920 punch-in crop, fills the frame — NO blur bars, NO letterbox; biases to the dominant speaker across shots, frames non-speaker reaction shots looser so it never hero-frames a listener)
+        → zoom-punch                   (deterministic ~10% punch-in pulses at RMS-peak words snapped to word starts, 1-4 per clip, clear of the title card and tail; ZOOM_PUNCH=0 skips)
         → chunk-captions               (Claude groups transcript → chunks.json; runs AHEAD of b-roll so cutaway windows snap to chunk boundaries)
         → broll-pick                   (Claude contextual/scene anchors → mcptube/yt-dlp cutaways → broll_plan.json; vision verify judges tonal fit + rejects literal-but-wrong; per-clip slot names, dense ~6-10 windows, BROLL_VISION_CAP default 16)
-        → broll-composite              (full-frame hard-cut cutaways onto the vertical clip, saliency-cropped not center; podcast audio continuous)
+        → broll-composite              (full-frame hard-cut cutaways onto the vertical clip, saliency-cropped not center; podcast audio continuous, whoosh SFX on each cutaway in/out — BROLL_SFX=0 disables)
         → burn-subtitles               (chunk-karaoke PNG overlay, RMS-aligned, burned ON TOP of the b-roll)
+        → sfx-beats (comedy)           (Claude marks punchline/irony/insight beats → vine boom / record scratch / ding; zero beats on non-comedic clips → passthrough; SFX_COMEDY=0 skips)
         → generate-title + title-transition (Claude title ≤7 words ALL-CAPS → animated intro card in the span's title_style, synthesized SFX mixed under the clip audio)
         → brand-overlays               (source-credit TOP chyron y≈4% + @C0BALT_CUT watermark y≈97.5% composited in ONE ffmpeg pass; falls back to the standalone source-credit → watermark two-pass path)
         → loudnorm                     (two-pass to -14 LUFS / -1.5 dBTP)
@@ -116,7 +121,7 @@ source video
 - `verify-bookends` runs AFTER `tighten-pace` and BEFORE `fill-vertical`. It is INWARD-ONLY (bookend-trim already had its outward chance) and may drop a span only on cleanliness failures requiring >2s of trim — never on hook weakness alone. Disable with `VERIFY_BOOKENDS=0`.
 - `chunk-captions` runs BEFORE `broll-pick` (b-roll windows snap to whole caption-chunk boundaries — no mid-word cuts).
 - `broll-composite` runs AFTER `broll-pick` and BEFORE `burn-subtitles` — captions must burn OVER the cutaways, never under them.
-- B-roll cutaways are full-frame hard cuts (entire 1080×1920 replaced, scale-cover + SALIENCY crop toward the action — not blind center — no bars, no crossfade/zoom). Podcast audio is continuous (stream-copied); b-roll audio is always dropped. Bottom-bar/letterbox b-roll = regression.
+- B-roll cutaways are full-frame hard cuts (entire 1080×1920 replaced, scale-cover + SALIENCY crop toward the action — not blind center — no bars, no crossfade/zoom). Podcast audio is CONTINUOUS — never replaced; a short synthesized whoosh is amix'd onto each cutaway in/out (`BROLL_SFX=0` → pure stream-copy). B-roll audio is always dropped. Bottom-bar/letterbox b-roll = regression.
 - `broll-pick` anchors are CONTEXTUAL/scene-level, not literal keyword objects — footage must match the story's tone (a tense "red dot" beat wants a sniper/laser sight, NOT a cat laser toy). Vision verify is given the spoken context and rejects literal-but-wrong matches. Aim dense (~6-10 windows where a sensible visual exists). B-roll files are namespaced per clip (`<clip>_broll_NN.<ext>`) in the shared `broll/` dir — NEVER reuse bare `broll_NN.mp4` slot names across spans (cross-span contamination bug).
 - `broll-pick` discovery uses the mcptube-bundled `yt-dlp` ytsearch, NOT `mcptube discover` (the latter needs an LLM API key the stack forbids). Vision verify via Claude; candidate prep (ingest + frame grids) runs CONCURRENTLY and verification is BATCHED — up to `BROLL_BATCH` (default 4) candidates judged per vision round-trip, with `BROLL_VISION_CAP` (default 16) bounding total candidates judged, not calls. Each window gets at most 2 query attempts (original + one literal↔metaphorical rewrite; rewrites are also batched into one call).
 - `broll-cleanup` runs exactly ONCE at end of run, evicting only `video_id`s in each `broll_plan.json`'s `ingested_video_ids` — never the podcast source. It must never modify or delete `broll_plan.json`.
@@ -128,7 +133,9 @@ source video
 - Final shorts are named from the title: `name-short` slugs `generate-title`'s output into `<kebab-title>.mp4`, and `save-local` puts it in `output/<source-title-slug>/`. Generic `short_NN.mp4` names in output/ = the orchestrator forgot to pass the name through.
 - If `start.sh`/`shorts.sh` does not invoke every skill above in the listed order, the entrypoint is wrong — fix the entrypoint, do not silently skip skills.
 - Verify after a run: every saved `output/<source-slug>/*.mp4` must be 1080x1920 (full-bleed punch-in, NO blur bars), have a title card on the first ~2.5s, AND have a CTA card for ~4s landing within the first third of the clip (after the title card). If any is missing, the pipeline regressed.
-- `sfx-beats` (riser/hit/stinger at tension peaks) exists but is NOT in the canonical chain — only run it when explicitly asked.
+- `zoom-punch` runs AFTER `fill-vertical` and BEFORE `broll-pick`/`broll-composite`/`burn-subtitles` — cutaways replace the full frame and captions must not wobble, so the punch zooms only ever touch the clean vertical. Deterministic (no Claude), non-fatal (failure → unzoomed passthrough), `ZOOM_PUNCH=0` disables.
+- `sfx-beats` comedy mode IS canonical: it runs AFTER `burn-subtitles` and BEFORE `generate-title`/`title-transition`. Claude marks 0-4 punchline/irony/insight beats (vine boom / record scratch / ding); marking ZERO beats on a non-comedic clip is correct behavior and passes through. Non-fatal, `SFX_COMEDY=0` disables. The tension mode (riser/hit/stinger) stays NOT canonical — only on request.
+- `SHORTS_DMAX` defaults to 40 (was 60): channel AVD is ~20s and research optimum is 15-34s — long picks die in the back half. Override per-run when a story truly needs more room.
 
 ## work/<id>/ Artifact Map
 
@@ -137,17 +144,18 @@ Every source gets `work/<sha1(url)[:10]>/`. Source-level files:
 | File | Written by | Contents |
 |---|---|---|
 | `source.mp4`, `ingest.json` | ingest | video + `{id, url, title, duration, fps, width, height, path}` |
+| `heatmap.json` | ingest | `{heatmap:[{start_time,end_time,value}], chapters:[...]}` — YouTube most-replayed graph (absent on low-view sources; backfilled on cache-hit) |
 | `transcript.json` | transcribe | `{source, language, words:[{t0,t1,w}], segments:[{t0,t1,text}]}` |
 | `topics.json` | segment-topics | `{topics:[{t0,t1,title,summary}]}` |
-| `segments.raw.json` | pick-segments | `{shorts:[{t0,t1,cuts,topic,rationale,title_suggestion,hook_score,structure_score,overall_score}]}` |
+| `segments.raw.json` | pick-segments | `{shorts:[{t0,t1,cuts,topic,rationale,title_suggestion,hook_score,structure_score,overall_score,replay_quotient?}]}` |
 | `segments.coherent.json` | verify-coherence | same + `coherence_verdict`/`coherence_note` |
 | `segments.json` | bookend-trim + pick-title-styles | final spans + `bookend_note` + `title_style`/`title_style_note` |
 | `broll/` | broll-pick | downloaded cutaways `<clip>_broll_NN.<ext>` (evicted by broll-cleanup) |
 | `_pane/` | pane.sh | per-step `in.txt`/`out.txt`/`out.done` for tmux Claude dispatch |
 
-Per-span files chain as `clip_NN.<stage>`: `.mp4` (cut) → `.transcript.json` (rebased) → `.keeps.json` + `.trim.mp4` + `.trim.transcript.json` (filler cut) → `.tight.mp4` + `.tight.transcript.json` (pace) → `.verify.json` (bookends verdict) → `.vert.mp4` (9:16) → `.chunks.json` → `.broll_plan.json` + `.brolled.mp4` → `.sub.mp4` (captions) → `.title.txt` + `.titled.mp4` → `.marked.mp4` (brand-overlays; a `.credited.mp4` intermediate appears only on the two-pass fallback) → `.leveled.mp4` (loudnorm) → `.ctaed.mp4` → `.mood.txt` + `.final.mp4` (music). Multi-cut spans also leave `clip_NN.cut_JJ.mp4` pieces + `clip_NN.cuts.txt` concat list.
+Per-span files chain as `clip_NN.<stage>`: `.mp4` (cut) → `.transcript.json` (rebased) → `.keeps.json` + `.trim.mp4` + `.trim.transcript.json` (filler cut) → `.tight.mp4` + `.tight.transcript.json` (pace) → `.verify.json` (bookends verdict) → `.vert.mp4` (9:16) → `.zoom.mp4` (punch-ins) → `.chunks.json` → `.broll_plan.json` + `.brolled.mp4` → `.sub.mp4` (captions) → `.sfx.mp4` (comedy SFX) → `.title.txt` + `.titled.mp4` → `.marked.mp4` (brand-overlays; a `.credited.mp4` intermediate appears only on the two-pass fallback) → `.leveled.mp4` (loudnorm) → `.ctaed.mp4` → `.mood.txt` + `.final.mp4` (music). Multi-cut spans also leave `clip_NN.cut_JJ.mp4` pieces + `clip_NN.cuts.txt` concat list.
 
-**Sidecars:** `.*meta` files (`.tfmeta`, `.tpmeta`, `.ttmeta`, `.vbmeta`, `.scmeta`, `.bometa`, `.lsmeta`, `.bgmeta`, `.pickmeta`, `.compmeta`) are mtime+param cache signatures — every skill is idempotent and skips when output is newer than inputs and the signature matches. `.path` files (`vert.path`, `ctx.path`, `leveled.path`) hand artifact locations between start.sh phases. `clip_NN.fail*` / `clip_NN.done.completion` are phase failure/resume markers.
+**Sidecars:** `.*meta` files (`.tfmeta`, `.tpmeta`, `.ttmeta`, `.vbmeta`, `.scmeta`, `.bometa`, `.lsmeta`, `.bgmeta`, `.pickmeta`, `.compmeta`, `.zpmeta`, `.sfxmeta`) are mtime+param cache signatures — every skill is idempotent and skips when output is newer than inputs and the signature matches. `.path` files (`vert.path`, `ctx.path`, `leveled.path`) hand artifact locations between start.sh phases. `clip_NN.fail*` / `clip_NN.done.completion` are phase failure/resume markers.
 
 ## Claude Dispatch (pane.sh)
 
@@ -155,7 +163,7 @@ Per-span files chain as `clip_NN.<stage>`: `.mp4` (cut) → `.transcript.json` (
 
 ## Environment
 
-`.env` holds source-of-truth paths (never hardcode): `WHISPER_BIN`, `WHISPER_MODEL`, `OUTPUT_DIR`. Runtime knobs: `SHORTS_N` / `SHORTS_DMIN` / `SHORTS_DMAX` (span count + duration bounds), `SHORTS_MAX_PAR` (parallel spans, default 1), `SHORTS_ENCODER` (`videotoolbox`|`x264`) via `_lib/encode.sh`, `BROLL_VISION_CAP` (default 16, counts candidates judged) / `BROLL_BATCH` (candidates per vision call, default 4), `BROLL_PICK=0` / `VERIFY_BOOKENDS=0` (disable those gates), `MCPTUBE_URL` (default `http://127.0.0.1:9093/mcp`), `PANE_TICK` / `PANE_TIMEOUT`.
+`.env` holds source-of-truth paths (never hardcode): `WHISPER_BIN`, `WHISPER_MODEL`, `OUTPUT_DIR`. Runtime knobs: `SHORTS_N` / `SHORTS_DMIN` / `SHORTS_DMAX` (span count + duration bounds; dmax default 40), `SHORTS_MAX_PAR` (parallel spans, default 1), `SHORTS_ENCODER` (`videotoolbox`|`x264`) via `_lib/encode.sh`, `BROLL_VISION_CAP` (default 16, counts candidates judged) / `BROLL_BATCH` (candidates per vision call, default 4), `BROLL_PICK=0` / `VERIFY_BOOKENDS=0` / `ZOOM_PUNCH=0` / `SFX_COMEDY=0` / `BROLL_SFX=0` (disable those steps), `MCPTUBE_URL` (default `http://127.0.0.1:9093/mcp`), `PANE_TICK` / `PANE_TIMEOUT`, `SCOUT_PER_QUERY` / `SCOUT_SHORTLIST` / `SCOUT_MIN_VIEWS` / `SCOUT_DUR_MIN` / `SCOUT_DUR_MAX` (scout-sources).
 
 ## File Tree (jump here instead of running find/ls)
 
@@ -183,6 +191,7 @@ shorts/
 ├── reference_shorts/          # target-look frame grabs used by the SPECs
 ├── demos/title-styles/        # demo.sh renders all 5 title styles on any clip (out/ gitignored)
 ├── work/<id>/                 # per-source working dirs (see Artifact Map above)
+├── work/_scout/               # scout-sources output (candidates.json — what to clip next)
 ├── output/<source-slug>/      # finished shorts, <title-slug>.mp4
 ├── .agents/                   # STALE gitignored copy of old skills (has retired fit-vertical/reframe-vertical) — never edit
 └── .claude/
@@ -192,10 +201,11 @@ shorts/
         ├── _lib/pane.sh       # run_claude_step: claude -p vs tmux-pane dispatch + polling
         ├── _lib/encode.sh     # vt_args/vt_threads: VideoToolbox vs libx264 encoder args
         │   # — selection phase —
-        ├── ingest/            # ingest.sh: yt-dlp → source.mp4 + ingest.json
+        ├── scout-sources/     # scout-sources.sh + score.py + niches.txt: PRE-pipeline outlier discovery → work/_scout/candidates.json (keyless yt-dlp, no Claude)
+        ├── ingest/            # ingest.sh: yt-dlp → source.mp4 + ingest.json + heatmap.json (most-replayed graph)
         ├── transcribe/        # transcribe.sh: whisper.cpp → word-level transcript.json
         ├── segment-topics/    # segment-topics.sh + build_prompt/parse_reply.py: Claude topic chapters
-        ├── pick-segments/     # pick-segments.sh + rms.py + build_prompt/parse_reply.py: Claude span picks w/ cuts + hook scores
+        ├── pick-segments/     # pick-segments.sh + rms.py + build_prompt/parse_reply.py: Claude span picks w/ cuts + hook scores + replay-heatmap prior
         ├── verify-coherence/  # verify-coherence.sh: Claude keep/tighten gate per span
         ├── pick-title-styles/ # pick-title-styles.sh + build_prompt/parse_reply.py: ONE batched Claude call assigns title_style per span (fit > variety > recency; .recent log gitignored)
         ├── bookend-trim/      # bookend-trim.sh + trim.py: Claude sentence-boundary snap (±6s)
@@ -206,10 +216,11 @@ shorts/
         ├── tighten-pace/      # tighten-pace.sh + plan.py: collapse gaps >0.18s → 0.08s (0.15s after sentences)
         ├── verify-bookends/   # verify-bookends.sh: Claude VISION gate on head/tail 1.5s (keep/trim/drop, inward-only)
         ├── fill-vertical/     # fill-vertical.sh + fill_vertical.py + models/face_landmarker.task: punch-in 9:16 (MediaPipe faces, lip-activity speaker pick, OpenCV saliency fallback)
+        ├── zoom-punch/        # zoom-punch.sh + plan.py: ~10% punch-in pulses at RMS-peak words (deterministic, after fill-vertical)
         │   # — captions & b-roll phase —
         ├── chunk-captions/    # chunk-captions.sh: Claude groups words into 3-6-word caption chunks
         ├── broll-pick/        # broll-pick.sh + pick_anchors/parse_anchors/verify_batch_prompt/parse_verify_batch/emit_plan.py: anchors → yt-dlp ytsearch → concurrent mcptube prep → BATCHED Claude vision verify → broll_plan.json (verify_prompt/parse_verify.py = legacy single-candidate versions)
-        ├── broll-composite/   # broll-composite.sh + build_filter.py: full-frame hard-cut overlays, saliency crop
+        ├── broll-composite/   # broll-composite.sh + build_filter.py + make_whoosh.py: full-frame hard-cut overlays, saliency crop, whoosh on each cut
         ├── broll-cleanup/     # broll-cleanup.sh: end-of-run mcptube + broll/ cache eviction
         ├── burn-subtitles/    # burn-subtitles.sh + burn_subtitles.py: PIL PNG karaoke (Impact, Sapphire active word, RMS-aligned)
         │   # — finishing phase —
@@ -222,7 +233,7 @@ shorts/
         ├── like-subscribe-overlay/  # like-subscribe-overlay.sh + cta.html + build-cta.sh: branded alpha ProRes CTA (gem avatar + @C0BALT_CUT, ~4s within the first third) + bell SFX
         ├── pick-mood/         # pick-mood.sh: Claude picks songs/<mood>/ from clip transcript
         ├── bg-music/          # bg-music.sh: looped bed, vol 0.17 (~-18dB), .recent blacklist
-        ├── sfx-beats/         # sfx-beats.sh + plan_sfx/make_sfx.py: riser/hit/stinger (NOT canonical — on request only)
+        ├── sfx-beats/         # sfx-beats.sh + plan_sfx/comedy_prompt/parse_comedy/make_sfx.py: comedy mode (boom/scratch/ding on Claude-marked beats — CANONICAL after burn-subtitles) + tension mode (riser/hit/stinger — on request only)
         ├── qc-clip/           # qc-clip.sh: ffprobe duration/size gate
         ├── name-short/        # name-short.sh: title → kebab-case .mp4 filename (pure string op)
         └── save-local/        # save-local.sh: copy into output/<subdir>/<name>

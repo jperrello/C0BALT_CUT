@@ -31,7 +31,7 @@ unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT
 
 n="${SHORTS_N:-5}"
 dmin="${SHORTS_DMIN:-20}"
-dmax="${SHORTS_DMAX:-60}"
+dmax="${SHORTS_DMAX:-40}"
 max_par="${SHORTS_MAX_PAR:-1}"
 (( max_par < 1 )) && max_par=1
 
@@ -54,7 +54,7 @@ After a successful run on a YouTube ID, edited_at is stamped in mcptube.
 env knobs:
   SHORTS_N        number of spans to pick (default 5)
   SHORTS_DMIN     min span seconds (default 20)
-  SHORTS_DMAX     max span seconds (default 60)
+  SHORTS_DMAX     max span seconds (default 40 — channel AVD is ~20s; long picks die in the back half)
   MCPTUBE_URL     mcptube MCP endpoint (default http://127.0.0.1:9093/mcp)
   MCPTUBE_DB      mcptube sqlite path (default \$HOME/.mcptube/mcptube.db)
 EOF
@@ -569,6 +569,16 @@ run_phase3_captions() {
     echo "chunk-captions" > "$dir/clip_${idx}.fail.captions"; return 1
   }
 
+  # zoom-punch: deterministic punch-ins at RMS-peak words (ZOOM_PUNCH=0 skips).
+  # Runs on the clean vertical BEFORE cutaways/captions so neither warps.
+  local zoomed="$dir/clip_${idx}.zoom.mp4"
+  if [[ "${ZOOM_PUNCH:-1}" != "0" ]]; then
+    log "[phase 3 / span $idx / captions] zoom-punch"
+    bash "$(skill zoom-punch)" "$vert" "$ctx" "$zoomed" >/dev/null || cp "$vert" "$zoomed"
+  else
+    zoomed="$vert"
+  fi
+
   # broll-pick: Claude anchors -> mcptube/yt-dlp sourced cutaways -> broll_plan.json
   log "[phase 3 / span $idx / captions] broll-pick"
   local broll_plan="$dir/clip_${idx}.broll_plan.json"
@@ -578,7 +588,7 @@ run_phase3_captions() {
   # broll-composite: full-frame hard-cut cutaways onto the vertical clip (captions burn on top)
   log "[phase 3 / span $idx / captions] broll-composite"
   local brolled="$dir/clip_${idx}.broll.mp4"
-  bash "$(skill broll-composite)" "$vert" "$broll_plan" "$brolled" >/dev/null || cp "$vert" "$brolled"
+  bash "$(skill broll-composite)" "$zoomed" "$broll_plan" "$brolled" >/dev/null || cp "$zoomed" "$brolled"
 
   log "[phase 3 / span $idx / captions] burn-subtitles"
   local sub="$dir/clip_${idx}.sub.mp4"
@@ -586,6 +596,16 @@ run_phase3_captions() {
     log "[phase 3 / span $idx / captions] burn-subtitles FAILED"
     echo "burn-subtitles" > "$dir/clip_${idx}.fail.captions"; return 1
   }
+
+  # sfx-beats comedy: meme SFX (vine boom / record scratch / ding) on
+  # Claude-marked punchline/irony/insight beats (SFX_COMEDY=0 skips)
+  local sfxed="$dir/clip_${idx}.sfx.mp4"
+  if [[ "${SFX_COMEDY:-1}" != "0" ]]; then
+    log "[phase 3 / span $idx / captions] sfx-beats (comedy)"
+    bash "$(skill sfx-beats)" "$sub" "$ctx" "$sfxed" comedy --pane "$cp_pane" >/dev/null || cp "$sub" "$sfxed"
+  else
+    sfxed="$sub"
+  fi
 
   log "[phase 3 / span $idx / captions] generate-title"
   local title_file="$dir/clip_${idx}.title.txt"
@@ -605,7 +625,7 @@ try: print(json.load(open(sys.argv[1])).get("title_style") or "slam")
 except Exception: print("slam")' "$title_ctx")"
   log "[phase 3 / span $idx / captions] title-transition (style=$style)"
   local titled="$dir/clip_${idx}.titled.mp4"
-  bash "$(skill title-transition)" "$sub" "$title" "$titled" "$style" >/dev/null || {
+  bash "$(skill title-transition)" "$sfxed" "$title" "$titled" "$style" >/dev/null || {
     log "[phase 3 / span $idx / captions] title-transition FAILED"
     echo "title-transition" > "$dir/clip_${idx}.fail.captions"; return 1
   }

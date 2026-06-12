@@ -1,6 +1,6 @@
 ---
 name: broll-composite
-description: Hard-cut full-frame B-roll cutaways onto a 1080x1920 clip per broll_plan.json. During each [t0,t1] the entire frame is replaced by the cutaway (instant in/out, no crossfade/zoom); 16:9 source is scale-to-cover + SALIENCY-cropped (OpenCV, toward the action — not blind center, with a centered fallback) to 1080x1920 with no bars. Podcast audio is stream-copied; video re-encoded. Zero valid picks -> passthrough copy. Pure ffmpeg.
+description: Hard-cut full-frame B-roll cutaways onto a 1080x1920 clip per broll_plan.json. During each [t0,t1] the entire frame is replaced by the cutaway (instant in/out, no crossfade/zoom); 16:9 source is scale-to-cover + SALIENCY-cropped (OpenCV, toward the action — not blind center, with a centered fallback) to 1080x1920 with no bars. A short synthesized whoosh marks each cutaway in/out (BROLL_SFX=0 disables); the podcast audio stays continuous underneath (amix'd, never replaced). Zero valid picks -> passthrough copy. Pure ffmpeg.
 allowed-tools: Bash
 user-invocable: true
 ---
@@ -10,8 +10,11 @@ user-invocable: true
 Applies the cutaways chosen by broll-pick. For each pick `[t0,t1]` the whole
 1080×1920 frame is replaced by the B-roll (hard cut, no transition). The 16:9
 source is scaled to COVER and center-cropped to 1080×1920 — full-bleed, never
-letterboxed (same philosophy as fill-vertical). The podcast audio stream is
-copied untouched for the whole clip; B-roll audio is dropped. Runs BEFORE
+letterboxed (same philosophy as fill-vertical). The podcast audio stays
+continuous for the whole clip; B-roll audio is dropped. A 0.3s synthesized
+whoosh (make_whoosh.py, ~-15dBFS under speech) sweeps up into each cutaway and
+down out of it — the standard retention-edit cut polish. `BROLL_SFX=0`
+disables the whooshes (audio then stays pure stream-copy). Runs BEFORE
 burn-subtitles so karaoke captions render on top of the cutaways.
 
 ## Invoke
@@ -32,11 +35,12 @@ burn-subtitles so karaoke captions render on top of the cutaways.
 
 ## Idempotency
 
-Caches on in_clip+plan mtimes via `<out>.compmeta`.
+Caches on in_clip+plan mtimes + BROLL_SFX via `<out>.compmeta`.
 
 ## Notes
 
 - Center-cover crop is self-contained here. If fill-vertical later exposes a
   reusable saliency-crop helper, switch to it for consistent framing.
 - Whole video is re-encoded (overlay can't partial stream-copy); audio is
-  `-c:a copy`. Uses `_lib/encode.sh` (VideoToolbox/x264) + thread caps.
+  amix'd with the whoosh bed to AAC 192k (or `-c:a copy` when BROLL_SFX=0 /
+  no picks). Uses `_lib/encode.sh` (VideoToolbox/x264) + thread caps.

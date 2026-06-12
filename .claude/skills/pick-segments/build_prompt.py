@@ -4,6 +4,7 @@ import json, sys
 
 transcript_path, rms_path, n, dmin, dmax = sys.argv[1:6]
 topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
+heatmap_path = sys.argv[7] if len(sys.argv) > 7 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
 
 tx = json.load(open(transcript_path))
@@ -54,6 +55,37 @@ for s in segments:
     lines.append(f"[{s['t0']:.1f}-{s['t1']:.1f}] {s['text'].strip()}")
 transcript_block = "\n".join(lines)
 
+# Most-replayed sparkline: YouTube's crowd-sourced replay graph for the SOURCE
+# video — the sections real viewers rewatched. Same 60-bin render as RMS.
+replay = ""
+if heatmap_path:
+    try:
+        hm = json.load(open(heatmap_path)).get("heatmap", [])
+    except (FileNotFoundError, ValueError):
+        hm = []
+    if hm and duration:
+        bars = "▁▂▃▄▅▆▇█"
+        nb = 60
+        acc = [0.0] * nb
+        cnt = [0] * nb
+        for p in hm:
+            mid = (float(p["start_time"]) + float(p["end_time"])) / 2
+            i = min(nb - 1, max(0, int(mid / duration * nb)))
+            acc[i] += float(p["value"])
+            cnt[i] += 1
+        vals = [a / c if c else 0.0 for a, c in zip(acc, cnt)]
+        peak = max(vals) or 1.0
+        replay = "".join(bars[min(7, int(v / peak * 7))] for v in vals)
+
+replay_block = ""
+if replay:
+    replay_block = f"""
+Most-replayed (YouTube's replay heatmap for this source — the moments REAL viewers rewatched, ▁ cold → █ hot):
+{replay}
+
+This replay graph is crowd-validated engagement: a span sitting over a replay peak has already proven it grabs viewers. STRONGLY favor spans overlapping replay peaks; treat a cold valley as evidence against a pick unless the transcript is exceptional.
+"""
+
 if topics:
     topic_block = "\n".join(
         f"  topic {i+1} [{t['t0']:.1f}-{t['t1']:.1f}] {t.get('title','')}: {t.get('summary','')}"
@@ -73,7 +105,7 @@ print(f"""You are picking clip-worthy spans for vertical shorts.
 Source duration: {duration:.1f}s
 Audio energy (per ~1s of source, bucketed to ~60 bins, ▁ low → █ high):
 {spark}
-
+{replay_block}
 Transcript (timestamped lines, seconds):
 {transcript_block}
 {topic_rules}
