@@ -79,7 +79,14 @@ print(
 )
 PY
 )"
+    # Paste the prompt, then pause before Enter: a single Enter fired
+    # immediately after a literal send races the TUI's bracketed-paste
+    # handler and the message sits unsubmitted in the input box. Sleep,
+    # then send Enter twice with a gap to guarantee submission.
     tmux send-keys -t "$SHORTS_PANE" -l -- "$msg"
+    sleep 1
+    tmux send-keys -t "$SHORTS_PANE" Enter
+    sleep 0.5
     tmux send-keys -t "$SHORTS_PANE" Enter
   else
     # unset CLAUDECODE/CLAUDE_CODE_ENTRYPOINT — `claude -p` refuses to nest

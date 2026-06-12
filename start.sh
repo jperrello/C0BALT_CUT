@@ -17,8 +17,10 @@
 #
 # Context rule:
 # Clear at lane boundaries, keep context within the lane. The analysis pane
-# handles one source transcript; each editor/captions/completion pane handles
-# one span. If these panes are ever reused across sources/spans, clear first.
+# handles one source transcript. Span work runs in a fixed pool of max_par
+# lanes; each lane owns ONE long-lived Claude pane reused across spans and
+# phases, with /clear between dispatches so context never leaks across spans
+# (and so a 77-span run holds max_par claude processes, not 70+).
 
 set -uo pipefail
 
@@ -326,10 +328,12 @@ count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["sh
 log "[phase 1] $count span(s) survived coherence check"
 [[ "$count" -gt 0 ]] || { log "FATAL: no spans survived"; exit 4; }
 
-# ---- phase 2-4: per-span fan-out -----------------------------------------
-# For each span we spawn its editor pane (phase 2), then captions pane
-# (phase 3), then a completion pane (phase 4). Span-level failures
-# are localized: a failed editor cancels phases 3/4 for that span only.
+# ---- phase 2-4: per-span lanes --------------------------------------------
+# Spans run through max_par lanes. Each lane pulls the next unclaimed span
+# and chains edit -> captions -> completion for it before moving on, so early
+# spans land in ./output/ while later spans are still editing, and a slow span
+# only stalls its own lane. Span-level failures are localized: a failed phase
+# cancels the rest of that span only.
 
 # Output folder: a kebab slug of the source title (falls back to the work id),
 # so shorts land in output/<title-slug>/ instead of the generic source stem.
@@ -345,12 +349,21 @@ out_dir="$root/output/$slug"
 # Folder is created lazily by save-local when a short is actually saved —
 # eagerly mkdir-ing here left empty husk folders behind on failed runs.
 
+# Lane pane is created lazily — a fully-cached span never pays the ~30s
+# claude startup. pane_new kills any stale same-name session first.
+pane_ready() {
+  local pane="$1"
+  tmux has-session -t "$pane" 2>/dev/null && return 0
+  pane_new "$pane" claude
+}
+
 run_span() {
-  local i="$1"
-  local idx; idx="$(printf '%02d' "$((i + 1))")"
-  local ed="shorts-$id-editor-$idx"
-  local cp_pane="shorts-$id-captions-$idx"
-  local cm="shorts-$id-completion-$idx"
+  local i="$1" idx="$2" ed="$3"
+
+  # A marker from a previous run is stale the moment we re-attempt (or find
+  # the phase cached): without this, retried spans stay skipped downstream
+  # forever (shorts-8m6).
+  rm -f "$dir/clip_${idx}.fail"
 
   # resume guard: phase 2 already produced this span's vertical + path sidecars
   if [[ -f "$dir/clip_${idx}.vert.mp4" && -f "$dir/clip_${idx}.vert.path" && -f "$dir/clip_${idx}.ctx.path" ]]; then
@@ -358,7 +371,7 @@ run_span() {
     return 0
   fi
 
-  pane_new "$ed" claude
+  pane_ready "$ed"
 
   # Read t0/t1 for this span from segments.json
   local t0 t1
@@ -511,8 +524,9 @@ print(s["t0"], s["t1"])' "$span_out")
 }
 
 run_phase3_captions() {
-  local i="$1" idx="$2"
-  local cp_pane="shorts-$id-captions-$idx"
+  local i="$1" idx="$2" cp_pane="$3"
+
+  rm -f "$dir/clip_${idx}.fail.captions"
 
   # resume guard: phase 3 already leveled this span
   if [[ -f "$dir/clip_${idx}.leveled.mp4" && -f "$dir/clip_${idx}.leveled.path" ]]; then
@@ -520,7 +534,7 @@ run_phase3_captions() {
     return 0
   fi
 
-  pane_new "$cp_pane" claude
+  pane_ready "$cp_pane"
   local vert; vert="$(cat "$dir/clip_${idx}.vert.path")"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
   # Sidecar written by run_span (phase 2); deterministic path, may be absent
@@ -568,19 +582,17 @@ run_phase3_captions() {
     echo "title-transition" > "$dir/clip_${idx}.fail.captions"; return 1
   }
 
-  log "[phase 3 / span $idx / captions] source-credit"
-  local credited="$dir/clip_${idx}.credited.mp4"
-  bash "$(skill source-credit)" "$titled" "$ingest_json" "$credited" >/dev/null || {
-    log "[phase 3 / span $idx / captions] source-credit FAILED (continuing without credit)"
-    cp "$titled" "$credited"
-  }
-
-  log "[phase 3 / span $idx / captions] watermark"
+  # credit + watermark are both static full-duration PNG overlays — one
+  # filtergraph pass instead of two re-encodes (shorts-6sp). Fallback: the
+  # original two-pass path, then unbranded copy.
+  log "[phase 3 / span $idx / captions] brand-overlays (credit + watermark)"
   local marked="$dir/clip_${idx}.marked.mp4"
-  bash "$(skill watermark)" "$credited" "$marked" >/dev/null || {
-    log "[phase 3 / span $idx / captions] watermark FAILED (continuing without mark)"
-    cp "$credited" "$marked"
-  }
+  if ! bash "$(skill brand-overlays)" "$titled" "$ingest_json" "$marked" >/dev/null; then
+    log "[phase 3 / span $idx / captions] brand-overlays FAILED — two-pass fallback"
+    local credited="$dir/clip_${idx}.credited.mp4"
+    bash "$(skill source-credit)" "$titled" "$ingest_json" "$credited" >/dev/null || cp "$titled" "$credited"
+    bash "$(skill watermark)" "$credited" "$marked" >/dev/null || cp "$credited" "$marked"
+  fi
 
   log "[phase 3 / span $idx / captions] loudnorm"
   local leveled="$dir/clip_${idx}.leveled.mp4"
@@ -593,8 +605,9 @@ run_phase3_captions() {
 }
 
 run_phase4() {
-  local i="$1" idx="$2"
-  local cm="shorts-$id-completion-$idx"
+  local i="$1" idx="$2" cm="$3"
+
+  rm -f "$dir/clip_${idx}.fail.completion"
 
   # resume guard: phase 4 already saved this span
   if [[ -f "$dir/clip_${idx}.done.completion" ]]; then
@@ -602,7 +615,7 @@ run_phase4() {
     return 0
   fi
 
-  pane_new "$cm" claude
+  pane_ready "$cm"
   local leveled; leveled="$(cat "$dir/clip_${idx}.leveled.path")"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
 
@@ -649,66 +662,62 @@ run_phase4() {
   return 0
 }
 
-# ---- per-span fan-out -----------------------------------------------------
-# Spans run at most $max_par at a time (default 1 = sequential). Past runs
-# launched every span at once with each ffmpeg/whisper grabbing all cores,
-# which thrashed the CPU. throttle blocks until a slot frees up (bash 3.2 has
-# no `wait -n`, so we poll the live pids).
+# ---- per-span lane scheduler ----------------------------------------------
+# max_par lane workers each pull the next unclaimed span (mkdir-locked
+# counter — atomic across the worker subshells) and run it end-to-end. One
+# Claude pane per lane, /clear'd between phases and spans, killed when the
+# lane drains. bash 3.2: no wait -n, no associative arrays.
 
-throttle() {
-  local max="$1"; shift
-  while :; do
-    local alive=0 p
-    for p in "$@"; do
-      [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null && alive=$((alive + 1))
-    done
-    (( alive < max )) && return
-    sleep 0.5
-  done
+next_span() {
+  local lock="$SHORTS_PANE_DIR/span.lock" nf="$SHORTS_PANE_DIR/span.next" n
+  until mkdir "$lock" 2>/dev/null; do sleep 0.1; done
+  n="$(cat "$nf" 2>/dev/null || echo 0)"
+  printf '%s\n' "$((n + 1))" > "$nf"
+  rmdir "$lock"
+  (( n < count )) || return 1
+  printf '%s\n' "$n"
 }
 
-declare -a span_pids=()
-for ((i = 0; i < count; i++)); do
-  throttle "$max_par" "${span_pids[@]:-}"
-  ( run_span "$i" ) &
-  span_pids+=($!)
-done
-log "[phase 2] $count span(s), up to $max_par at a time (${SHORTS_THREADS} threads each)"
-for pid in "${span_pids[@]}"; do wait "$pid"; done
-log "[phase 2] all editors done"
+lane_clear() {
+  tmux has-session -t "$1" 2>/dev/null && pane_chat_clear "$1"
+  return 0
+}
 
-declare -a p3_pids=()
-for ((i = 0; i < count; i++)); do
-  idx="$(printf '%02d' "$((i + 1))")"
-  if [[ -f "$dir/clip_${idx}.fail" ]]; then
-    log "[phase 3] span $idx skipped (editor failed: $(cat "$dir/clip_${idx}.fail"))"
-    continue
-  fi
-  throttle "$max_par" "${p3_pids[@]:-}"
-  ( run_phase3_captions "$i" "$idx" ) &
-  p3_pids+=($!)
-done
-log "[phase 3] ${#p3_pids[@]} captions pane(s) running"
-for pid in "${p3_pids[@]}"; do wait "$pid"; done
-log "[phase 3] all captions done"
+run_lane() {
+  local lane="$1" pane="shorts-$id-lane-$lane" i idx
+  while i="$(next_span)"; do
+    idx="$(printf '%02d' "$((i + 1))")"
+    lane_clear "$pane"
+    if ! run_span "$i" "$idx" "$pane"; then
+      log "[lane $lane] span $idx FAILED (edit) — next span"
+      continue
+    fi
+    lane_clear "$pane"
+    if ! run_phase3_captions "$i" "$idx" "$pane"; then
+      log "[lane $lane] span $idx FAILED (captions) — next span"
+      continue
+    fi
+    lane_clear "$pane"
+    if ! run_phase4 "$i" "$idx" "$pane"; then
+      log "[lane $lane] span $idx FAILED (completion) — next span"
+      continue
+    fi
+    log "[lane $lane] span $idx complete -> output/$slug/"
+  done
+  tmux kill-session -t "$pane" 2>/dev/null
+  return 0
+}
 
-declare -a p4_pids=()
-for ((i = 0; i < count; i++)); do
-  idx="$(printf '%02d' "$((i + 1))")"
-  if [[ -f "$dir/clip_${idx}.fail" ]]; then
-    log "[phase 4] span $idx skipped (editor failed)"
-    continue
-  fi
-  if [[ -f "$dir/clip_${idx}.fail.captions" ]]; then
-    log "[phase 4] span $idx skipped (captions failed: $(cat "$dir/clip_${idx}.fail.captions"))"
-    continue
-  fi
-  throttle "$max_par" "${p4_pids[@]:-}"
-  ( run_phase4 "$i" "$idx" ) &
-  p4_pids+=($!)
+rm -f "$SHORTS_PANE_DIR/span.next"
+rmdir "$SHORTS_PANE_DIR/span.lock" 2>/dev/null
+declare -a lane_pids=()
+for ((L = 1; L <= max_par; L++)); do
+  ( run_lane "$L" ) &
+  lane_pids+=($!)
 done
-log "[phase 4] ${#p4_pids[@]} completion pane(s) running"
-for pid in "${p4_pids[@]}"; do wait "$pid"; done
+log "[lanes] $count span(s) across $max_par lane(s) (${SHORTS_THREADS} threads each)"
+for pid in "${lane_pids[@]}"; do wait "$pid"; done
+log "[lanes] all spans complete"
 
 # ---- broll-cleanup --------------------------------------------------------
 # Runs ONCE at end of run: evicts only this run's mcptube b-roll ingests +
