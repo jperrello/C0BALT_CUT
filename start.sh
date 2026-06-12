@@ -164,7 +164,10 @@ pane_new() {
     tmux respawn-pane -k -t "$name" \
       "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; exec claude --dangerously-skip-permissions"
     pane_wait_idle "$name" 30 || log "warn: $name did not show a Claude prompt before dispatch"
-    pane_chat_clear "$name"
+    # No /clear here: a fresh session has nothing to clear, and racing a
+    # slash command against the still-initializing TUI leaves "/clear"
+    # unsubmitted in the input box — the next task paste then concatenates
+    # onto it and gets swallowed as slash-command arguments.
   fi
   PANES+=("$name")
 }
@@ -184,7 +187,13 @@ pane_wait_idle() {
 
 pane_chat_clear() {
   local pane="$1"
+  # Same paste-pause-Enter dance as run_claude_step: an Enter fired right
+  # after a literal send races the TUI's paste handling and "/clear" sits
+  # unsubmitted, poisoning the next dispatch.
   tmux send-keys -t "$pane" -l -- "/clear"
+  sleep 1
+  tmux send-keys -t "$pane" Enter
+  sleep 0.5
   tmux send-keys -t "$pane" Enter
   pane_wait_idle "$pane" 10 || true
 }

@@ -134,7 +134,12 @@ PY
 pane_clear() {
   [[ -z "${SHORTS_PANE:-}" ]] && return 0
   if [[ "${SHORTS_PANE_MODE:-}" == "chat" ]]; then
+    # paste-pause-Enter, same as run_claude_step: an immediate Enter races
+    # the TUI and leaves "/clear" unsubmitted in the input box.
     tmux send-keys -t "$SHORTS_PANE" -l -- "/clear"
+    sleep 1
+    tmux send-keys -t "$SHORTS_PANE" Enter
+    sleep 0.5
     tmux send-keys -t "$SHORTS_PANE" Enter
     return 0
   fi
