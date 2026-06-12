@@ -2,16 +2,17 @@
 # like-subscribe-overlay: overlay a JS-rendered like/subscribe CTA animation
 # (assets/cta.mov — ProRes 4444 with alpha, built from cta.html by build-cta.sh;
 # features the channel gem avatar + @C0BALT_CUT handle) for `dur` seconds
-# starting at `pos` fraction of the clip (default 0.30 — early enough that
-# viewers who bail before the end still see it). The asset is time-stretched
-# (setpts) to fit dur and pinned to the lower third. Bell SFX layered under
-# the click.
+# starting at `pos` fraction of the clip (default 0.15). The start is clamped
+# so the whole CTA lands WITHIN THE FIRST THIRD of the clip — early enough
+# that viewers who bail never miss it — while staying clear of the ~2.5s
+# title card. The asset is time-stretched (setpts) to fit dur and pinned to
+# the lower third. Bell SFX layered under the click.
 set -euo pipefail
 
 input="${1:-}"
 out="${2:-}"
 dur="${3:-4.0}"
-pos="${4:-0.30}"
+pos="${4:-0.15}"
 
 if [[ -z "$input" || -z "$out" ]]; then
   echo "usage: like-subscribe-overlay.sh <input> <out> [dur=4.0] [pos=0.30]" >&2
@@ -28,7 +29,7 @@ if [[ ! -f "$asset" ]]; then
 fi
 
 meta="$out.lsmeta"
-sig="$dur|$pos|mov-v3-branded-30pct"
+sig="$dur|$pos|mov-v4-first-third"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -57,8 +58,15 @@ adur="$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
 
 # clamp dur so it fits the clip
 dur="$(python3 -c "print(min(float('$dur'), max(1.5, float('$vdur') - 0.2)))")"
-# start at pos fraction of the clip, clamped so the CTA never spills past the end
-start="$(python3 -c "print(round(min(max(0.0, float('$pos') * float('$vdur')), max(0.0, float('$vdur') - float('$dur') - 0.2)), 4))")"
+# start at pos fraction, clamped so the CTA ends inside the first third of the
+# clip (vdur/3 - dur) and starts after the ~2.5s title card; on clips too short
+# for both, the title-card floor wins, then the never-spill-past-end cap.
+start="$(python3 -c "
+v, d, p = float('$vdur'), float('$dur'), float('$pos')
+s = min(p * v, v / 3 - d)
+s = max(s, 3.0)
+s = max(0.0, min(s, v - d - 0.2))
+print(round(s, 4))")"
 # time-stretch factor: multiply input PTS by this to fit dur seconds.
 # factor < 1 => asset plays faster than its native rate.
 sf="$(python3 -c "print(round(float('$dur') / float('$adur'), 6))")"

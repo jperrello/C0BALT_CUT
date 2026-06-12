@@ -1,6 +1,6 @@
 ---
 name: like-subscribe-overlay
-description: Overlay the branded like/subscribe CTA animation — channel gem avatar + @C0BALT_CUT handle + subscribe/like/bell click choreography — for ~4 seconds starting at the 30% mark of a finished short (early placement so viewers who bail before the end still see it). The animation source is cta.html (HTML+CSS+JS driving the pill pop-in, cursor moves, click punches, bell ring, thumb fill); build-cta.sh renders it frame-by-frame via headless Chromium (Playwright, omitBackground) and ffmpeg-encodes to assets/cta.mov (ProRes 4444 with alpha).
+description: Overlay the branded like/subscribe CTA animation — channel gem avatar + @C0BALT_CUT handle + subscribe/like/bell click choreography — for ~4 seconds WITHIN THE FIRST THIRD of a finished short (start clamped to end by the 1/3 mark, floored after the ~2.5s title card; early placement so viewers who bail never miss it). The animation source is cta.html (HTML+CSS+JS driving the pill pop-in, cursor moves, click punches, bell ring, thumb fill); build-cta.sh renders it frame-by-frame via headless Chromium (Playwright, omitBackground) and ffmpeg-encodes to assets/cta.mov (ProRes 4444 with alpha).
 allowed-tools: Bash
 user-invocable: true
 ---
@@ -9,8 +9,9 @@ user-invocable: true
 
 Drops a hook-grabbing branded call to action into the short. A JS-driven
 animation plays in the lower third for `dur` seconds starting at `pos`
-fraction of the clip (default 0.30 — before the halfway point, where
-retention is still high): a Carbon Black pill pops in carrying the channel
+fraction of the clip (default 0.15), with the start clamped so the whole
+CTA lands inside the first third of the clip — where retention is highest —
+while staying clear of the ~2.5s title card: a Carbon Black pill pops in carrying the channel
 gem avatar (sapphire-ringed, glow breathing) and the `@C0BALT_CUT` handle
 (Impact, Platinum, sapphire slashed zero) → cursor enters → clicks
 SUBSCRIBE (red → dark, scale punch, expanding ring) → bell rings → cursor
@@ -25,14 +26,15 @@ crop of the channel gem); replace it and re-run `build-cta.sh` to rebrand.
 ## Invoke
 
 ```
-.claude/skills/like-subscribe-overlay/like-subscribe-overlay.sh <input> <out> [dur=4.0] [pos=0.30]
+.claude/skills/like-subscribe-overlay/like-subscribe-overlay.sh <input> <out> [dur=4.0] [pos=0.15]
 ```
 
 - `input`: finished short (any aspect ratio; designed for 1080x1920)
 - `out`: output mp4
 - `dur`: total CTA duration in seconds (clamped to clip length, default 4.0)
-- `pos`: fraction of the clip at which the CTA starts (default 0.30; clamped
-  so the CTA never spills past the end)
+- `pos`: fraction of the clip at which the CTA starts (default 0.15; clamped
+  so the CTA ends inside the first third, starts after the ~2.5s title card,
+  and never spills past the end of the clip — in that priority order)
 
 ## Output
 
@@ -53,8 +55,9 @@ YouTube red pre-click for instant recognition.
 ## Where in the pipeline
 
 Runs after `loudnorm` and before `bg-music` / `save-local`. The overlay
-lands at ~30% of the clip, so it composites over whatever is on screen
-mid-story (captions burn beneath it for those 4 seconds — intended).
+lands inside the first third of the clip (after the title card), so it
+composites over whatever is on screen early in the story (captions burn
+beneath it for those 4 seconds — intended).
 
 ## How
 
@@ -66,6 +69,7 @@ mid-story (captions burn beneath it for those 4 seconds — intended).
    WAV — one ding as the pill lands, a quieter accent mid-hold.
 3. `like-subscribe-overlay.sh` time-stretches the asset to `dur` (setpts),
    pins it to the lower third, `enable`s it for `[start, start+dur]` where
-   `start = pos * clip_duration`, and mixes the SFX (timed with
+   `start = min(pos * clip_duration, clip_duration/3 - dur)` floored at 3.0s
+   (title-card clearance), and mixes the SFX (timed with
    `-itsoffset start`) over the source audio (`amix … normalize=0` +
    `alimiter`).
