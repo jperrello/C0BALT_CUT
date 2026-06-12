@@ -352,6 +352,12 @@ run_span() {
   local cp_pane="shorts-$id-captions-$idx"
   local cm="shorts-$id-completion-$idx"
 
+  # resume guard: phase 2 already produced this span's vertical + path sidecars
+  if [[ -f "$dir/clip_${idx}.vert.mp4" && -f "$dir/clip_${idx}.vert.path" && -f "$dir/clip_${idx}.ctx.path" ]]; then
+    log "[phase 2 / span $idx] cached (vert.mp4 + paths present) — skipping"
+    return 0
+  fi
+
   pane_new "$ed" claude
 
   # Read t0/t1 for this span from segments.json
@@ -507,6 +513,13 @@ print(s["t0"], s["t1"])' "$span_out")
 run_phase3_captions() {
   local i="$1" idx="$2"
   local cp_pane="shorts-$id-captions-$idx"
+
+  # resume guard: phase 3 already leveled this span
+  if [[ -f "$dir/clip_${idx}.leveled.mp4" && -f "$dir/clip_${idx}.leveled.path" ]]; then
+    log "[phase 3 / span $idx] cached (leveled.mp4 present) — skipping"
+    return 0
+  fi
+
   pane_new "$cp_pane" claude
   local vert; vert="$(cat "$dir/clip_${idx}.vert.path")"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
@@ -582,6 +595,13 @@ run_phase3_captions() {
 run_phase4() {
   local i="$1" idx="$2"
   local cm="shorts-$id-completion-$idx"
+
+  # resume guard: phase 4 already saved this span
+  if [[ -f "$dir/clip_${idx}.done.completion" ]]; then
+    log "[phase 4 / span $idx] cached (already saved) — skipping"
+    return 0
+  fi
+
   pane_new "$cm" claude
   local leveled; leveled="$(cat "$dir/clip_${idx}.leveled.path")"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
@@ -625,6 +645,7 @@ run_phase4() {
     echo "save-local" > "$dir/clip_${idx}.fail.completion"
     return 1
   }
+  printf '%s\n' "$short_name" > "$dir/clip_${idx}.done.completion"
   return 0
 }
 
