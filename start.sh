@@ -684,7 +684,10 @@ lane_clear() {
 }
 
 run_lane() {
-  local lane="$1" pane="shorts-$id-lane-$lane" i idx
+  local lane="$1" i idx
+  # separate statement: bash 3.2 expands a `local` line's words before any
+  # of its assignments land, so $lane is unbound on the same line
+  local pane="shorts-$id-lane-$lane"
   while i="$(next_span)"; do
     idx="$(printf '%02d' "$((i + 1))")"
     lane_clear "$pane"
