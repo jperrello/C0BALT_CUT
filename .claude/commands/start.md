@@ -32,17 +32,20 @@ The orchestrator preflights the mcptube MCP server at
 with instructions if it's unreachable. Set `SHORTS_N`, `SHORTS_DMIN`,
 `SHORTS_DMAX` to tune span count / duration.
 
-## Pane layout (per spec §1)
+## Pane layout
 
 - `shorts-<id>-srcprep` — bash: ingest + transcribe
 - `shorts-<id>-mcptube` — bash: background mcptube add
 - `shorts-<id>-analysis` — Claude: topics → picks → coherence
-- `shorts-<id>-editor-NN` — Claude: bookend-trim, trim-filler, verify-bookends (with bash skills interleaved)
-- `shorts-<id>-captions-NN` — Claude: chunk-captions, generate-title (bash: burn-subtitles, title-transition, source-credit, watermark, loudnorm)
-- `shorts-<id>-completion-NN` — Claude: pick-mood; bash: like-subscribe-overlay, bg-music, qc, save-local
+- `shorts-<id>-lane-N` — one per `SHORTS_MAX_PAR`: a lane worker's pooled
+  Claude pane, reused across every span that lane pulls (bookend-trim,
+  trim-filler, verify-bookends, chunk-captions, broll-pick verifies,
+  generate-title, pick-mood — bash skills interleave in the orchestrator).
+  `/clear` runs between phases/spans so context never leaks across spans
+  and claude processes stay O(max_par), not O(spans).
 
-Panes are torn down on run completion. `shorts.sh` remains as a
-non-interactive fallback.
+A lane's pane dies when the lane drains; everything is torn down on run
+completion. `shorts.sh` remains as a non-interactive fallback.
 
 ## Run
 
