@@ -80,10 +80,10 @@ if heatmap_path:
 replay_block = ""
 if replay:
     replay_block = f"""
-Most-replayed (YouTube's replay heatmap for this source — the moments REAL viewers rewatched, ▁ cold → █ hot):
+Most-replayed (YouTube's replay heatmap for this source — moments viewers rewatched, ▁ cold → █ hot):
 {replay}
 
-This replay graph is crowd-validated engagement: a span sitting over a replay peak has already proven it grabs viewers. STRONGLY favor spans overlapping replay peaks; treat a cold valley as evidence against a pick unless the transcript is exceptional.
+Use replay as a DISCOVERY HINT, not a decision rule. Replay peaks often mark the most surprising sentence inside a larger explanation; the short still needs enough setup before the peak and enough aftermath after it to make sense to someone who did not watch the full video. Never pick an isolated highlight just because it sits on a replay peak.
 """
 
 if topics:
@@ -111,6 +111,14 @@ Transcript (timestamped lines, seconds):
 {topic_rules}
 Pick {n} non-overlapping shorts, each {dmin:.0f}-{dmax:.0f} seconds of FINAL runtime, that would work as standalone shorts. Avoid mid-sentence cuts.
 
+STANDALONE CONTEXT (hard priority):
+A good pick must make sense to a cold viewer with no surrounding podcast context. It needs:
+  - setup: enough premise for the viewer to know what question/problem/example is being discussed.
+  - turn: the surprising claim, conflict, demonstration, or insight.
+  - landing: the speaker's explanation of why the turn matters, not just the last shocking phrase.
+
+Reject a span if it is merely a highlight, definition, example, punchline, or replay spike without the surrounding thought. It is better to choose a less flashy topic with a complete arc than a hotter moment that ends abruptly. For long-form explainers and interviews, prefer 28-45 seconds when that is what the idea needs; use the minimum length only when the whole idea truly lands.
+
 ASSEMBLE THE STORY WITH CUTS (important): a great short is EDITED, not just a raw clip. Each short is built from 1-3 source segments ("cuts") joined end-to-end. Most strong moments are a single continuous cut. But when the best version of a story has a slow middle, a tangent, or dead setup between two strong beats, SPLIT it: keep the gripping setup, CUT OUT the sag, and jump to the payoff — so the viewer gets a tight, complete arc instead of a thin skeleton or a meandering clip. Think like an editor assembling the most engaging 20-45s, not a knife making one slice.
   - Provide "cuts": a list of [start, end] source-second ranges, in chronological order, non-overlapping. The cuts play back-to-back.
   - ALL cuts of one short MUST stay within ONE topic — you are tightening a single story, never splicing two unrelated ones.
@@ -121,12 +129,13 @@ ASSEMBLE THE STORY WITH CUTS (important): a great short is EDITED, not just a ra
 SCROLL-STOP HOOK (highest priority — shorts that don't grab in the first 1-2s are dead):
 You are picking the spans a viewer is LEAST likely to scroll past and MOST likely to finish. The OPENING WORDS of each span are what a viewer sees first. Score each pick on:
   - hook_score (0-10): does the first 1-2s plant a curiosity question OR land a striking visual/factual claim? Reward concrete nouns, numbers, named subjects, surprising statements, direct questions. Punish vague setup.
-  - structure_score (0-10): does the span have hook → foreshadow → payoff? Is there but/therefore causality between beats (not just "and then")? Does it open a curiosity loop that resolves by the end?
-  - overall_score (0-10): your holistic rank — would you stop scrolling AND watch to the end? Weigh what tends to make a span engaging: high vocal energy/affect (excitement, laughter, emphasis), lively back-and-forth exchange, and concrete/specific nouns and real stakes. Read the RMS sparkline above as an affect cue — favor spans sitting over energy peaks (laughter, raised voices), not flat valleys. These are examples of engagement, not a checklist: a gripping span missing some still ranks high.
+  - context_score (0-10): can a cold viewer understand the setup, the turn, and why the ending matters without missing the previous or next sentence? Penalize abrupt endings hard.
+  - structure_score (0-10): does the span have hook → foreshadow → payoff → landing? Is there but/therefore causality between beats (not just "and then")? Does it open a curiosity loop that resolves by the end?
+  - overall_score (0-10): your holistic rank — would you stop scrolling AND watch to the end? Weigh complete standalone meaning first, then hook strength, then high vocal energy/affect, lively exchange, concrete nouns, real stakes, RMS peaks, and replay peaks. RMS/replay can break ties but cannot rescue a confusing or abrupt clip.
 
 HARD REJECT — do NOT pick spans whose first transcript word is filler:
   so, and, but, um, uh, like, well, okay, ok, basically, actually, anyway, you know, I mean, I think, I guess, kind of, sort of
 Trim the span start forward to a stronger opening word if needed (still respect {dmin:.0f}s minimum).
 
 Reply with ONLY a JSON object (no prose, no code fences):
-{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "rationale": "<short reason>", "title_suggestion": "<short title>", "hook_score": <0-10>, "structure_score": <0-10>, "overall_score": <0-10>}}]}}""")
+{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "rationale": "<short reason>", "title_suggestion": "<short title>", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "overall_score": <0-10>}}]}}""")

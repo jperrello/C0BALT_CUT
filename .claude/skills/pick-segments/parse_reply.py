@@ -141,6 +141,7 @@ for sh in data.get("shorts", []):
         "rationale": sh.get("rationale", "")[:280],
         "title_suggestion": sh.get("title_suggestion", "")[:120],
         "hook_score": float(sh.get("hook_score", 0) or 0),
+        "context_score": float(sh.get("context_score", 0) or 0),
         "structure_score": float(sh.get("structure_score", 0) or 0),
         "overall_score": float(sh.get("overall_score", 0) or 0),
     }
@@ -148,11 +149,12 @@ for sh in data.get("shorts", []):
         item["topic"] = tp.get("title", "")
     rq = replay_quotient(cuts)
     if rq is not None:
-        # crowd-validated replay overlap nudges the rank deterministically:
-        # +0 at source-average, capped at +1.5 for a 2x-replayed span
+        # Replay is a weak tie-breaker. It often marks the memorable sentence
+        # inside a larger explanation, so it must not overpower Claude's arc
+        # judgment.
         item["replay_quotient"] = round(rq, 2)
         item["overall_score"] = round(
-            item["overall_score"] + min(1.5, max(0.0, (rq - 1.0) * 1.5)), 2)
+            item["overall_score"] + min(0.4, max(0.0, (rq - 1.0) * 0.4)), 2)
     shorts.append(item)
 
 shorts.sort(key=lambda s: -s["overall_score"])

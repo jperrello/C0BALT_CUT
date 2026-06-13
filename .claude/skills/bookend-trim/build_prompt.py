@@ -47,6 +47,10 @@ Your job:
     that completes a sentence. You may extend (later) OR pull back (earlier).
     Prefer extending — landing on a complete thought is more important than
     keeping the clip short.
+    If the current ending is a striking fact, example, punchline, or named
+    result and the following line explains why it matters, extend through that
+    explanation. Do not stop at a phrase that is grammatically complete but
+    leaves the viewer asking "so what?"
 
 Rules:
   - new_t0 and new_t1 must be timestamps that appear as line boundaries in
