@@ -87,11 +87,12 @@ bash .claude/skills/scout-sources/scout-sources.sh   # what to clip NEXT (ranked
 source video
   ├─ ingest           (yt-dlp → work/<id>/source.mp4 + ingest.json + heatmap.json [most-replayed graph + chapters; absent on low-view sources, backfilled on cache-hit])
   ├─ transcribe       (whisper.cpp local → transcript.json, word-level timestamps)
-  ├─ segment-topics   (Claude → topics.json)
-  ├─ pick-segments    (Claude over transcript + RMS + topics + replay heatmap → segments.raw.json, N spans; each span carries `cuts`: 1-3 within-topic source ranges assembled into one story; spans over most-replayed peaks get a deterministic overall_score bonus + `replay_quotient` field)
+  ├─ segment-topics   (Claude → topics.json; on long sources [RLM_TOPICS=1, or auto when duration ≥ RLM_TOPICS_MIN_SEC=1500s] runs rlm-assisted: chunks the full-resolution transcript into ~RLM_TOPICS_CHUNK_SEC=600s windows, dispatches ONE rlm-subcall subagent per chunk, synthesizes topics.json + candidates.hint.json — preserves back-half detail the single-prompt compression loses; single-prompt path is the deterministic fallback)
+  ├─ pick-segments    (Claude over transcript + RMS + topics + replay heatmap + candidates.hint.json [rlm discovery hint, when present] → segments.raw.json, N spans; each span carries `cuts`: 1-3 within-topic source ranges assembled into one story; spans over most-replayed peaks get a deterministic overall_score bonus + `replay_quotient` field. The dmin–dmax window is the SOURCE-SELECTION budget, NOT delivered runtime — pick generously; downstream trim/tighten shave ~20-30%)
   ├─ verify-coherence (tighten incoherent spans to the dominant topic → segments.coherent.json; multi-cut spans pass through untouched)
   ├─ pick-title-styles (Claude, ONE batched call → title_style per span: slam|typewriter|glitch|bounce|cinematic; fit wins, variety as tiebreak, ≤⌈N/2⌉ per style, soft bias against the .recent log; any failure → least-used round-robin, never fatal)
   ├─ bookend-trim     (Claude snaps each span's [t0,t1] to sentence boundaries → segments.json; for multi-cut, snaps the first cut's start + last cut's end)
+  ├─ verify-completeness (Claude arc-completeness gate in SOURCE coords: reads each span's assembled arc + tail lookahead → complete|needs_more_tail|truncated; nudges t1 + last cut's end OUTWARD to the landing sentence within dmax when the payoff got cut off. Non-fatal, idempotent, VERIFY_COMPLETENESS=0 disables. In start.sh runs per-span in phase 2 right after bookend-trim; in shorts.sh runs once over all spans. The OUTWARD counterpart to verify-bookends)
   └─ per span:
        cut-clip (assemble: when `cuts` has >1 range, cut each precisely + concat into one clip; assemble.py builds the joined clip-local transcript)
         → rebase (single-cut spans only; rebase.py — multi-cut uses assemble.py)
@@ -102,7 +103,7 @@ source video
         → zoom-punch                   (deterministic ~10% punch-in pulses at RMS-peak words snapped to word starts, 1-4 per clip, clear of the title card and tail; ZOOM_PUNCH=0 skips)
         → chunk-captions               (Claude groups transcript → chunks.json; runs AHEAD of b-roll so cutaway windows snap to chunk boundaries)
         → broll-pick                   (Claude contextual/scene anchors → mcptube/yt-dlp cutaways → broll_plan.json; vision verify judges tonal fit + rejects literal-but-wrong; per-clip slot names, dense ~6-10 windows, BROLL_VISION_CAP default 16)
-        → broll-composite              (full-frame hard-cut cutaways onto the vertical clip, saliency-cropped not center; podcast audio continuous, whoosh SFX on each cutaway in/out — BROLL_SFX=0 disables)
+        → broll-composite              (full-frame hard-cut cutaways onto the vertical clip, saliency-cropped not center; podcast audio continuous, no transition SFX by default — BROLL_SFX=1 re-enables a whoosh on each cutaway in/out)
         → burn-subtitles               (chunk-karaoke PNG overlay, RMS-aligned, burned ON TOP of the b-roll)
         → sfx-beats (comedy)           (Claude marks punchline/irony/insight beats → vine boom / record scratch / ding; zero beats on non-comedic clips → passthrough; SFX_COMEDY=0 skips)
         → generate-title + title-transition (Claude title ≤7 words ALL-CAPS → animated intro card in the span's title_style, synthesized SFX mixed under the clip audio)
@@ -120,9 +121,10 @@ source video
 - pick-segments builds each short from `cuts` — 1-3 NON-contiguous source ranges within ONE topic, assembled into one story (skip the sag, keep hook→payoff). The `cut-clip` step cuts each range precisely and concats; `assemble.py` joins the clip-local transcript so all downstream skills stay synced. A single-cut short is `cuts:[[t0,t1]]` and takes the plain `rebase.py` path. Multi-cut spans bypass verify-coherence tightening (already tightened by construction).
 - pick-segments must choose complete cold-viewer story arcs, not isolated replay highlights. YouTube replay heatmap and RMS are supporting evidence only: use them to discover candidates and break close ties, but never let them outrank setup → turn → landing context. A replay spike often marks the memorable sentence inside a larger explanation; include enough before and after for the clip to make sense and not end abruptly.
 - `verify-bookends` runs AFTER `tighten-pace` and BEFORE `fill-vertical`. It is INWARD-ONLY (bookend-trim already had its outward chance) and may drop a span only on cleanliness failures requiring >2s of trim — never on hook weakness alone. Disable with `VERIFY_BOOKENDS=0`.
+- `verify-completeness` runs AFTER `bookend-trim` and BEFORE `cut-clip`, in SOURCE coordinates. It is the OUTWARD counterpart to verify-bookends: it reads each span's assembled arc (the words inside its `cuts`) plus a tail lookahead and may nudge `t1`/the last cut's end outward to the landing sentence (capped at dmax) when the payoff got cut off. It NEVER drops a span and NEVER extends past dmax. It runs pre-cut because the clip-local transcript discards source timestamps after cut/trim/tighten (rebase.py), so outward extension is only clean in source coords. Non-fatal (passthrough on any failure), idempotent, `VERIFY_COMPLETENESS=0` disables.
 - `chunk-captions` runs BEFORE `broll-pick` (b-roll windows snap to whole caption-chunk boundaries — no mid-word cuts).
 - `broll-composite` runs AFTER `broll-pick` and BEFORE `burn-subtitles` — captions must burn OVER the cutaways, never under them.
-- B-roll cutaways are full-frame hard cuts (entire 1080×1920 replaced, scale-cover + SALIENCY crop toward the action — not blind center — no bars, no crossfade/zoom). Podcast audio is CONTINUOUS — never replaced; a short synthesized whoosh is amix'd onto each cutaway in/out (`BROLL_SFX=0` → pure stream-copy). B-roll audio is always dropped. Bottom-bar/letterbox b-roll = regression.
+- B-roll cutaways are full-frame hard cuts (entire 1080×1920 replaced, scale-cover + SALIENCY crop toward the action — not blind center — no bars, no crossfade/zoom). Podcast audio is CONTINUOUS — never replaced; no transition SFX by default (pure stream-copy), `BROLL_SFX=1` amix's a short synthesized whoosh onto each cutaway in/out. B-roll audio is always dropped. Bottom-bar/letterbox b-roll = regression.
 - `broll-pick` anchors are CONTEXTUAL/scene-level, not literal keyword objects — footage must match the story's tone (a tense "red dot" beat wants a sniper/laser sight, NOT a cat laser toy). Vision verify is given the spoken context and rejects literal-but-wrong matches. Aim dense (~6-10 windows where a sensible visual exists). B-roll files are namespaced per clip (`<clip>_broll_NN.<ext>`) in the shared `broll/` dir — NEVER reuse bare `broll_NN.mp4` slot names across spans (cross-span contamination bug).
 - `broll-pick` discovery uses the mcptube-bundled `yt-dlp` ytsearch, NOT `mcptube discover` (the latter needs an LLM API key the stack forbids). Vision verify via Claude; candidate prep (ingest + frame grids) runs CONCURRENTLY and verification is BATCHED — up to `BROLL_BATCH` (default 4) candidates judged per vision round-trip, with `BROLL_VISION_CAP` (default 16) bounding total candidates judged, not calls. Each window gets at most 2 query attempts (original + one literal↔metaphorical rewrite; rewrites are also batched into one call).
 - `broll-cleanup` runs exactly ONCE at end of run, evicting only `video_id`s in each `broll_plan.json`'s `ingested_video_ids` — never the podcast source. It must never modify or delete `broll_plan.json`.
@@ -136,7 +138,7 @@ source video
 - Verify after a run: every saved `output/<source-slug>/*.mp4` must be 1080x1920 (full-bleed punch-in, NO blur bars), have a title card on the first ~2.5s, AND have a CTA card for ~4s landing within the first third of the clip (after the title card). If any is missing, the pipeline regressed.
 - `zoom-punch` runs AFTER `fill-vertical` and BEFORE `broll-pick`/`broll-composite`/`burn-subtitles` — cutaways replace the full frame and captions must not wobble, so the punch zooms only ever touch the clean vertical. Deterministic (no Claude), non-fatal (failure → unzoomed passthrough), `ZOOM_PUNCH=0` disables.
 - `sfx-beats` comedy mode IS canonical: it runs AFTER `burn-subtitles` and BEFORE `generate-title`/`title-transition`. Claude marks 0-4 punchline/irony/insight beats (vine boom / record scratch / ding); marking ZERO beats on a non-comedic clip is correct behavior and passes through. Non-fatal, `SFX_COMEDY=0` disables. The tension mode (riser/hit/stinger) stays NOT canonical — only on request.
-- `SHORTS_DMAX` defaults to 40 (was 60): channel AVD is ~20s and research optimum is 15-34s — long picks die in the back half. Override per-run when a story truly needs more room.
+- `SHORTS_DMIN`/`SHORTS_DMAX` default to 28/55 (June 14 re-tune from 20/40, which had over-truncated). These are the SOURCE-SELECTION budget, NOT the delivered runtime: pick-segments selects generously within them and downstream trim-filler/tighten-pace/verify-bookends shave ~20-30%, landing the DELIVERED short in the ~30-40s sweet spot. The 40→55 history: June 12's Growth suite dropped 60→40, but combined with the downstream cutters that delivered ~26-32s ("truncated" feeling); 55 restores complete-feeling arcs without resurrecting the dead 60s back-half. Override per-run when a story truly needs more room.
 
 ## work/<id>/ Artifact Map
 
@@ -148,9 +150,10 @@ Every source gets `work/<sha1(url)[:10]>/`. Source-level files:
 | `heatmap.json` | ingest | `{heatmap:[{start_time,end_time,value}], chapters:[...]}` — YouTube most-replayed graph (absent on low-view sources; backfilled on cache-hit) |
 | `transcript.json` | transcribe | `{source, language, words:[{t0,t1,w}], segments:[{t0,t1,text}]}` |
 | `topics.json` | segment-topics | `{topics:[{t0,t1,title,summary}]}` |
+| `candidates.hint.json` | segment-topics (rlm path only) | `{candidates:[{t0,t1,quote,why}]}` — clip-moment discovery hints from the full-resolution per-chunk read; consumed by pick-segments as a HINT (absent on the single-prompt path) |
 | `segments.raw.json` | pick-segments | `{shorts:[{t0,t1,cuts,topic,rationale,title_suggestion,hook_score,structure_score,overall_score,replay_quotient?}]}` |
 | `segments.coherent.json` | verify-coherence | same + `coherence_verdict`/`coherence_note` |
-| `segments.json` | bookend-trim + pick-title-styles | final spans + `bookend_note` + `title_style`/`title_style_note` |
+| `segments.json` | bookend-trim + verify-completeness + pick-title-styles | final spans + `bookend_note` + `completeness_verdict`/`completeness_note` + `title_style`/`title_style_note` (in start.sh verify-completeness runs per-span in phase 2, not on this source-level file) |
 | `broll/` | broll-pick | downloaded cutaways `<clip>_broll_NN.<ext>` (evicted by broll-cleanup) |
 | `_pane/` | pane.sh | per-step `in.txt`/`out.txt`/`out.done` for tmux Claude dispatch |
 
@@ -164,7 +167,7 @@ Per-span files chain as `clip_NN.<stage>`: `.mp4` (cut) → `.transcript.json` (
 
 ## Environment
 
-`.env` holds source-of-truth paths (never hardcode): `WHISPER_BIN`, `WHISPER_MODEL`, `OUTPUT_DIR`. Runtime knobs: `SHORTS_N` / `SHORTS_DMIN` / `SHORTS_DMAX` (span count + duration bounds; dmax default 40), `SHORTS_MAX_PAR` (parallel spans, default 1), `SHORTS_ENCODER` (`videotoolbox`|`x264`) via `_lib/encode.sh`, `BROLL_VISION_CAP` (default 16, counts candidates judged) / `BROLL_BATCH` (candidates per vision call, default 4), `BROLL_PICK=0` / `VERIFY_BOOKENDS=0` / `ZOOM_PUNCH=0` / `SFX_COMEDY=0` / `BROLL_SFX=0` (disable those steps), `MCPTUBE_URL` (default `http://127.0.0.1:9093/mcp`), `PANE_TICK` / `PANE_TIMEOUT`, `SCOUT_PER_QUERY` / `SCOUT_SHORTLIST` / `SCOUT_MIN_VIEWS` / `SCOUT_DUR_MIN` / `SCOUT_DUR_MAX` (scout-sources).
+`.env` holds source-of-truth paths (never hardcode): `WHISPER_BIN`, `WHISPER_MODEL`, `OUTPUT_DIR`. Runtime knobs: `SHORTS_N` / `SHORTS_DMIN` / `SHORTS_DMAX` (span count + source-selection duration bounds; defaults 5 / 28 / 55), `SHORTS_MAX_PAR` (parallel spans, default 1), `SHORTS_ENCODER` (`videotoolbox`|`x264`) via `_lib/encode.sh`, `BROLL_VISION_CAP` (default 16, counts candidates judged) / `BROLL_BATCH` (candidates per vision call, default 4), `BROLL_PICK=0` / `VERIFY_BOOKENDS=0` / `VERIFY_COMPLETENESS=0` / `ZOOM_PUNCH=0` / `SFX_COMEDY=0` / `BROLL_SFX=0` (disable those steps), `RLM_TOPICS` (`1` forces rlm-assisted segment-topics, `0` forces single-prompt; unset = auto above `RLM_TOPICS_MIN_SEC`, default 1500s) / `RLM_TOPICS_CHUNK_SEC` (rlm chunk window, default 600s), `MCPTUBE_URL` (default `http://127.0.0.1:9093/mcp`), `PANE_TICK` / `PANE_TIMEOUT`, `SCOUT_PER_QUERY` / `SCOUT_SHORTLIST` / `SCOUT_MIN_VIEWS` / `SCOUT_DUR_MIN` / `SCOUT_DUR_MAX` (scout-sources).
 
 ## File Tree (jump here instead of running find/ls)
 
@@ -205,11 +208,12 @@ shorts/
         ├── scout-sources/     # scout-sources.sh + score.py + niches.txt: PRE-pipeline outlier discovery → work/_scout/candidates.json (keyless yt-dlp, no Claude)
         ├── ingest/            # ingest.sh: yt-dlp → source.mp4 + ingest.json + heatmap.json (most-replayed graph)
         ├── transcribe/        # transcribe.sh: whisper.cpp → word-level transcript.json
-        ├── segment-topics/    # segment-topics.sh + build_prompt/parse_reply.py: Claude topic chapters
-        ├── pick-segments/     # pick-segments.sh + rms.py + build_prompt/parse_reply.py: Claude span picks w/ cuts + hook scores + replay-heatmap prior
+        ├── segment-topics/    # segment-topics.sh + build_prompt/parse_reply.py: Claude topic chapters; + build_rlm_prompt/parse_candidates.py: rlm-assisted map-reduce path (chunk → rlm-subcall per chunk → synthesize topics.json + candidates.hint.json) when RLM_TOPICS / duration threshold
+        ├── pick-segments/     # pick-segments.sh + rms.py + build_prompt/parse_reply.py: Claude span picks w/ cuts + hook scores + replay-heatmap prior + candidates.hint.json discovery hint
         ├── verify-coherence/  # verify-coherence.sh: Claude keep/tighten gate per span
         ├── pick-title-styles/ # pick-title-styles.sh + build_prompt/parse_reply.py: ONE batched Claude call assigns title_style per span (fit > variety > recency; .recent log gitignored)
         ├── bookend-trim/      # bookend-trim.sh + trim.py: Claude sentence-boundary snap (±6s)
+        ├── verify-completeness/ # verify-completeness.sh + build_prompt/parse_reply.py: arc-completeness gate (complete|needs_more_tail|truncated; nudges t1 outward to the landing within dmax; source coords, after bookend-trim before cut-clip; VERIFY_COMPLETENESS=0 disables)
         │   # — per-span edit phase —
         ├── cut-clip/          # cut-clip.sh: ffmpeg [t0,t1] trim (stream-copy or reencode)
         ├── trim-filler/       # trim-filler.sh: Claude marks filler → keeps.json + trimmed transcript

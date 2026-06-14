@@ -26,6 +26,11 @@ fi
 heatmap=""
 hm_cand="$(dirname "$transcript")/heatmap.json"
 [[ -f "$hm_cand" ]] && heatmap="$hm_cand"
+# rlm candidate-moment hints (from rlm-assisted segment-topics) — discovery
+# signal only; pick-segments' standalone-arc judgment still decides.
+hint=""
+hint_cand="$(dirname "$transcript")/candidates.hint.json"
+[[ -f "$hint_cand" ]] && hint="$hint_cand"
 if [[ ! -f "$transcript" ]]; then
   echo "pick-segments: transcript not found: $transcript" >&2
   exit 2
@@ -47,6 +52,10 @@ if [[ -f "$out" ]]; then
     hm_mtime="$(stat -f %m "$heatmap" 2>/dev/null || stat -c %Y "$heatmap")"
     [[ "$hm_mtime" -gt "$in_mtime" ]] && in_mtime="$hm_mtime"
   fi
+  if [[ -n "$hint" ]]; then
+    ht_mtime="$(stat -f %m "$hint" 2>/dev/null || stat -c %Y "$hint")"
+    [[ "$ht_mtime" -gt "$in_mtime" ]] && in_mtime="$ht_mtime"
+  fi
   out_mtime="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
   if [[ "$out_mtime" -ge "$in_mtime" ]]; then
     echo "pick-segments: cache hit at $out" >&2
@@ -67,7 +76,7 @@ else
 fi
 
 prompt_file="$tmp/prompt.txt"
-python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" "${topics:-}" "${heatmap:-}" > "$prompt_file"
+python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" "${topics:-}" "${heatmap:-}" "${hint:-}" > "$prompt_file"
 
 reply="$tmp/reply.txt"
 run_claude_step pick-segments "$prompt_file" "$reply" 2>"$tmp/claude.err" || {

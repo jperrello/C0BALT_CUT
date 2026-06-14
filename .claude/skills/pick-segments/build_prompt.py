@@ -5,6 +5,7 @@ import json, sys
 transcript_path, rms_path, n, dmin, dmax = sys.argv[1:6]
 topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
 heatmap_path = sys.argv[7] if len(sys.argv) > 7 else ""
+hint_path = sys.argv[8] if len(sys.argv) > 8 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
 
 tx = json.load(open(transcript_path))
@@ -86,6 +87,26 @@ Most-replayed (YouTube's replay heatmap for this source — moments viewers rewa
 Use replay as a DISCOVERY HINT, not a decision rule. Replay peaks often mark the most surprising sentence inside a larger explanation; the short still needs enough setup before the peak and enough aftermath after it to make sense to someone who did not watch the full video. Never pick an isolated highlight just because it sits on a replay peak.
 """
 
+# rlm candidate-moment hints (full-resolution per-chunk discovery) — surfaces
+# back-half arcs the compressed transcript view can miss. HINT only.
+hint_block = ""
+if hint_path:
+    try:
+        cands = json.load(open(hint_path)).get("candidates", [])
+    except (FileNotFoundError, ValueError):
+        cands = []
+    if cands:
+        rows = "\n".join(
+            f"  [{c['t0']:.1f}-{c['t1']:.1f}] {str(c.get('quote','')).strip()[:160]}"
+            for c in cands
+        )
+        hint_block = f"""
+CANDIDATE MOMENTS (rlm discovery hint — clip-worthy beats surfaced from a full-resolution per-chunk read; especially useful for the back half of long videos):
+{rows}
+
+Treat these as DISCOVERY HINTS only, exactly like the replay graph: they point you at moments worth examining, but YOUR standalone-arc judgment still decides. Expand any hint you use to a complete setup → turn → landing arc; never pick a bare quote because it appears here.
+"""
+
 if topics:
     topic_block = "\n".join(
         f"  topic {i+1} [{t['t0']:.1f}-{t['t1']:.1f}] {t.get('title','')}: {t.get('summary','')}"
@@ -108,8 +129,10 @@ Audio energy (per ~1s of source, bucketed to ~60 bins, ▁ low → █ high):
 {replay_block}
 Transcript (timestamped lines, seconds):
 {transcript_block}
-{topic_rules}
-Pick {n} non-overlapping shorts, each {dmin:.0f}-{dmax:.0f} seconds of FINAL runtime, that would work as standalone shorts. Avoid mid-sentence cuts.
+{topic_rules}{hint_block}
+Pick {n} non-overlapping shorts, each {dmin:.0f}-{dmax:.0f} seconds of SOURCE story selected, that would work as standalone shorts. Avoid mid-sentence cuts.
+
+SELECTION BUDGET vs DELIVERED LENGTH (read this): the {dmin:.0f}-{dmax:.0f}s window is how much SOURCE story you select — NOT the final runtime. After you pick, downstream editing (filler removal + pace tightening) shaves roughly 20-30% of the dead air and trail-offs. So select the FULLER arc — include the complete setup and the landing — and trust the editor to tighten it into the ~30-40s sweet spot. Do NOT pre-trim the arc to hit a short target; an arc that already feels minimal at selection will land truncated after tightening.
 
 STANDALONE CONTEXT (hard priority):
 A good pick must make sense to a cold viewer with no surrounding podcast context. It needs:
@@ -117,9 +140,9 @@ A good pick must make sense to a cold viewer with no surrounding podcast context
   - turn: the surprising claim, conflict, demonstration, or insight.
   - landing: the speaker's explanation of why the turn matters, not just the last shocking phrase.
 
-Reject a span if it is merely a highlight, definition, example, punchline, or replay spike without the surrounding thought. It is better to choose a less flashy topic with a complete arc than a hotter moment that ends abruptly. For long-form explainers and interviews, prefer 28-45 seconds when that is what the idea needs; use the minimum length only when the whole idea truly lands.
+Reject a span if it is merely a highlight, definition, example, punchline, or replay spike without the surrounding thought. It is better to choose a less flashy topic with a complete arc than a hotter moment that ends abruptly. For long-form explainers and interviews, prefer 40-55 seconds of source when that is what the idea needs; use the minimum length only when the whole idea truly lands in less.
 
-ASSEMBLE THE STORY WITH CUTS (important): a great short is EDITED, not just a raw clip. Each short is built from 1-3 source segments ("cuts") joined end-to-end. Most strong moments are a single continuous cut. But when the best version of a story has a slow middle, a tangent, or dead setup between two strong beats, SPLIT it: keep the gripping setup, CUT OUT the sag, and jump to the payoff — so the viewer gets a tight, complete arc instead of a thin skeleton or a meandering clip. Think like an editor assembling the most engaging 20-45s, not a knife making one slice.
+ASSEMBLE THE STORY WITH CUTS (important): a great short is EDITED, not just a raw clip. Each short is built from 1-3 source segments ("cuts") joined end-to-end. Most strong moments are a single continuous cut. But when the best version of a story has a slow middle, a tangent, or dead setup between two strong beats, SPLIT it: keep the gripping setup, CUT OUT the sag, and jump to the payoff — so the viewer gets a tight, complete arc instead of a thin skeleton or a meandering clip. Think like an editor assembling the most engaging 40-55s of source, not a knife making one slice.
   - Provide "cuts": a list of [start, end] source-second ranges, in chronological order, non-overlapping. The cuts play back-to-back.
   - ALL cuts of one short MUST stay within ONE topic — you are tightening a single story, never splicing two unrelated ones.
   - The SUM of cut durations must be {dmin:.0f}-{dmax:.0f}s. Keep cuts to 1-3; don't over-chop.

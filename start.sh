@@ -30,8 +30,8 @@ set -uo pipefail
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT
 
 n="${SHORTS_N:-5}"
-dmin="${SHORTS_DMIN:-20}"
-dmax="${SHORTS_DMAX:-40}"
+dmin="${SHORTS_DMIN:-28}"
+dmax="${SHORTS_DMAX:-55}"
 max_par="${SHORTS_MAX_PAR:-1}"
 (( max_par < 1 )) && max_par=1
 
@@ -53,8 +53,8 @@ After a successful run on a YouTube ID, edited_at is stamped in mcptube.
 
 env knobs:
   SHORTS_N        number of spans to pick (default 5)
-  SHORTS_DMIN     min span seconds (default 20)
-  SHORTS_DMAX     max span seconds (default 40 — channel AVD is ~20s; long picks die in the back half)
+  SHORTS_DMIN     min span seconds (default 28)
+  SHORTS_DMAX     max span seconds (SELECTION budget, default 55 — pick generously; downstream trim-filler/tighten-pace land the DELIVERED short in the ~30-40s sweet spot)
   MCPTUBE_URL     mcptube MCP endpoint (default http://127.0.0.1:9093/mcp)
   MCPTUBE_DB      mcptube sqlite path (default \$HOME/.mcptube/mcptube.db)
 EOF
@@ -435,6 +435,15 @@ json.dump(out, open(sys.argv[3], "w"))
     echo "bookend-trim" > "$dir/clip_${idx}.fail"
     return 1
   fi
+  # --- verify-completeness (Claude) --------------------------------------
+  # Does the assembled arc land? Nudge t1 outward within dmax to the landing
+  # sentence. Non-fatal: passthrough leaves span_out unchanged. Source coords,
+  # before cut — the outward counterpart to the inward-only verify-bookends.
+  log "[phase 2 / span $idx] verify-completeness"
+  bash "$(skill verify-completeness)" "$span_out" "$tx" "$dir/clip_${idx}.span.complete.json" "$dmax" --pane "$ed" \
+    && mv -f "$dir/clip_${idx}.span.complete.json" "$span_out" \
+    || log "[phase 2 / span $idx] verify-completeness failed — span unchanged"
+
   read -r t0 t1 < <(python3 -c '
 import json, sys
 s = json.load(open(sys.argv[1]))["shorts"][0]

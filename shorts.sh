@@ -8,11 +8,11 @@ set -uo pipefail
 
 url="${1:-}"
 n="${2:-5}"
-dmin="${3:-20}"
-dmax="${4:-40}"
+dmin="${3:-28}"
+dmax="${4:-55}"
 
 if [[ -z "$url" ]]; then
-  echo "usage: shorts.sh <youtube-url> [n=5] [dmin=20] [dmax=40]" >&2
+  echo "usage: shorts.sh <youtube-url> [n=5] [dmin=28] [dmax=55]" >&2
   exit 2
 fi
 
@@ -57,6 +57,13 @@ bash "$(skill verify-coherence)" "$segments_raw" "$transcript" "$segments_coh" "
 step "bookend-trim"
 segments="$dir/segments.json"
 bash "$(skill bookend-trim)" "$segments_coh" "$transcript" "$segments" 6.0 "$dmin" >/dev/null || die "bookend-trim"
+
+# 7b2. verify-completeness (does the assembled arc land? nudge t1 outward
+#      within dmax to the landing sentence; outward counterpart to verify-bookends)
+step "verify-completeness"
+bash "$(skill verify-completeness)" "$segments" "$transcript" "$dir/segments.complete.json" "$dmax" >/dev/null \
+  && mv -f "$dir/segments.complete.json" "$segments" \
+  || echo "shorts: verify-completeness failed — spans unchanged" >&2
 
 # 7c. pick-title-styles (one batched call; best-effort, defaults to slam) ---
 step "pick-title-styles"
