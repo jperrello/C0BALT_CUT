@@ -20,6 +20,10 @@ fi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 
+# the top credit chyron shares its slot with the cold-open title (title-transition
+# holds the title there until TITLE_SWAP); fade the citation in at the same second.
+swap="${TITLE_SWAP:-2.0}"
+
 title="$(python3 -c '
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -28,7 +32,7 @@ print((d.get("title") or d.get("id") or d.get("source_id") or "Unknown").strip()
 [[ -n "$title" ]] || title="Unknown"
 
 meta="$out.bometa"
-sig="$title"
+sig="$title|swap$swap"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -54,9 +58,15 @@ trap 'rm -rf "$tmp"' EXIT
 python3 "$here/../source-credit/render_credit.py" "$title" "$tmp/credit.png" "$w" "$h"
 python3 "$here/../watermark/render_watermark.py" "$tmp/mark.png" "$w" "$h"
 
-# Same placements as the standalone skills: credit top chyron at y≈4%,
-# watermark bottom-anchored at y≈97.5% — one overlay chain, one encode.
-ov="[0:v][1:v]overlay=x='(W-w)/2':y='H*0.04':format=auto[v1];[v1][2:v]overlay=x='(W-w)/2':y='H*0.975-h':format=auto[v]"
+dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$input")"
+[[ "$dur" =~ ^[0-9.]+$ ]] || dur=600
+
+# Credit top chyron at y≈4% — but it fades IN at TITLE_SWAP so the cold-open
+# title owns the top banner first; watermark bottom-anchored at y≈97.5% for the
+# whole clip. Credit is a looped+faded stream so the fade applies to its alpha.
+ov="[1:v]fade=t=in:st=${swap}:d=0.2:alpha=1[cr];\
+[0:v][cr]overlay=x='(W-w)/2':y='H*0.04':enable='gte(t,${swap})':format=auto[v1];\
+[v1][2:v]overlay=x='(W-w)/2':y='H*0.975-h':format=auto[v]"
 
 staging="$tmp/$(basename "$out")"
 
@@ -69,14 +79,14 @@ while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
 
 if [[ "$has_audio" == "audio" ]]; then
   ffmpeg -y -hide_banner -loglevel error \
-    ${vdec[@]+"${vdec[@]}"} -i "$input" -i "$tmp/credit.png" -i "$tmp/mark.png" \
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -loop 1 -t "$dur" -i "$tmp/credit.png" -i "$tmp/mark.png" \
     -filter_complex "${ov}" \
     -map "[v]" -map 0:a \
     "${venc[@]}" \
     -c:a copy "${vthr[@]}" -movflags +faststart "$staging"
 else
   ffmpeg -y -hide_banner -loglevel error \
-    ${vdec[@]+"${vdec[@]}"} -i "$input" -i "$tmp/credit.png" -i "$tmp/mark.png" \
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -loop 1 -t "$dur" -i "$tmp/credit.png" -i "$tmp/mark.png" \
     -filter_complex "${ov}" \
     -map "[v]" \
     "${venc[@]}" \

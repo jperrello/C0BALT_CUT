@@ -29,7 +29,10 @@ STOPS = {"THE","A","AN","AND","OR","OF","TO","IN","ON","AT","FOR","FROM",
          "HIS","HER","THEIR","WHEN","WATCH","THIS","THAT","ALL","TIMES"}
 
 words = title.split() or [" "]
-CX, CY = W // 2, H // 2
+# vertical anchor of the title block. production passes a top-banner fraction
+# (the cold-open hook sits over live footage where the citation later lands);
+# default 0.5 keeps the centered look for demos / standalone use.
+CX, CY = W // 2, int(H * float(os.environ.get("TITLE_ANCHOR_FRAC", 0.5)))
 
 
 def accent_index():
@@ -157,8 +160,11 @@ def clamp(v, a, b):
 # ---------- styles ----------
 
 def slam():
+    # S0 = punch-in start scale. kept modest so a top-anchored title doesn't
+    # overshoot past the frame edges on the landing frame.
+    S0 = 2.6
     fs, lines = fit(IMPACT)
-    master = render(lines, IMPACT, fs, 3.4, WHITE, ACCENT)
+    master = render(lines, IMPACT, fs, S0, WHITE, ACCENT)
     full = render(lines, IMPACT, fs, 1.0, WHITE, ACCENT)
     land, settle, outt = 0.26, 0.14, 0.30
 
@@ -166,9 +172,9 @@ def slam():
         c = blank()
         if t < land:
             p = t / land
-            s = 3.4 - 2.4 * p * p
-            img = master.resize((max(2, int(master.width * s / 3.4)),
-                                 max(2, int(master.height * s / 3.4))), Image.LANCZOS)
+            s = S0 - (S0 - 1.0) * p * p
+            img = master.resize((max(2, int(master.width * s / S0)),
+                                 max(2, int(master.height * s / S0))), Image.LANCZOS)
             put(c, fade(img, 0.45 + 0.55 * p), CX, CY)
             return c
         if t < land + settle:

@@ -1,6 +1,6 @@
 ---
 name: brand-overlays
-description: Composite both persistent brand PNGs — the top "Original video: <title>" credit chyron (y≈4%) and the bottom @C0BALT_CUT watermark (y≈97.5%) — onto a finished short in ONE ffmpeg pass. Replaces the back-to-back source-credit + watermark re-encodes in the orchestrator (saves a full re-encode and an intermediate .mp4 per span); those two skills remain the standalone single-overlay ops and own the PNG renderers this skill reuses.
+description: Composite both persistent brand PNGs — the top "Original video: <title>" credit chyron (y≈4%) and the bottom @C0BALT_CUT watermark (y≈97.5%) — onto a finished short in ONE ffmpeg pass. The credit fades IN at TITLE_SWAP (default 2.0s) so the cold-open title (title-transition) owns the top banner first, then hands the slot to the citation; the watermark holds the whole clip. Replaces the back-to-back source-credit + watermark re-encodes in the orchestrator (saves a full re-encode and an intermediate .mp4 per span); those two skills remain the standalone single-overlay ops and own the PNG renderers this skill reuses.
 ---
 
 # brand-overlays

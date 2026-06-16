@@ -23,8 +23,12 @@ print((d.get("title") or d.get("id") or d.get("source_id") or "Unknown").strip()
 ' "$ingest")"
 [[ -n "$title" ]] || title="Unknown"
 
+# fades in at TITLE_SWAP so the cold-open title (title-transition) owns the top
+# banner first — matches brand-overlays' timing.
+swap="${TITLE_SWAP:-2.0}"
+
 meta="$out.scmeta"
-sig="$title"
+sig="$title|swap$swap"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -49,10 +53,13 @@ trap 'rm -rf "$tmp"' EXIT
 
 python3 "$here/render_credit.py" "$title" "$tmp/credit.png" "$w" "$h"
 
-# Center horizontally; anchor banner near the TOP of the frame.
-# For 1080x1920 -> y≈77. Sits above the captions (now in the lower third)
-# and clear of the centered title card.
-ov="[0:v][1:v]overlay=x='(W-w)/2':y='H*0.04':format=auto[v]"
+dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$input")"
+[[ "$dur" =~ ^[0-9.]+$ ]] || dur=600
+
+# Center horizontally; anchor banner near the TOP of the frame (y≈77 on
+# 1080x1920). Sits above the lower-third captions. Fades in at TITLE_SWAP so the
+# cold-open title holds the top banner first, then hands off to this citation.
+ov="[1:v]fade=t=in:st=${swap}:d=0.2:alpha=1[cr];[0:v][cr]overlay=x='(W-w)/2':y='H*0.04':enable='gte(t,${swap})':format=auto[v]"
 
 staging="$tmp/$(basename "$out")"
 
@@ -65,14 +72,14 @@ while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
 
 if [[ "$has_audio" == "audio" ]]; then
   ffmpeg -y -hide_banner -loglevel error \
-    ${vdec[@]+"${vdec[@]}"} -i "$input" -i "$tmp/credit.png" \
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -loop 1 -t "$dur" -i "$tmp/credit.png" \
     -filter_complex "${ov}" \
     -map "[v]" -map 0:a \
     "${venc[@]}" \
     -c:a copy "${vthr[@]}" -movflags +faststart "$staging"
 else
   ffmpeg -y -hide_banner -loglevel error \
-    ${vdec[@]+"${vdec[@]}"} -i "$input" -i "$tmp/credit.png" \
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -loop 1 -t "$dur" -i "$tmp/credit.png" \
     -filter_complex "${ov}" \
     -map "[v]" \
     "${venc[@]}" \
