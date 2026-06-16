@@ -140,6 +140,10 @@ for sh in data.get("shorts", []):
         "cuts": cuts,
         "rationale": sh.get("rationale", "")[:280],
         "title_suggestion": sh.get("title_suggestion", "")[:120],
+        "opening_line": str(sh.get("opening_line", "")).strip()[:160],
+        "hook_type": (str(sh.get("hook_type", "")).strip().lower()
+                      if str(sh.get("hook_type", "")).strip().lower()
+                      in ("question", "provocation", "claim") else "claim"),
         "hook_score": float(sh.get("hook_score", 0) or 0),
         "context_score": float(sh.get("context_score", 0) or 0),
         "structure_score": float(sh.get("structure_score", 0) or 0),
@@ -157,7 +161,16 @@ for sh in data.get("shorts", []):
             item["overall_score"] + min(0.4, max(0.0, (rq - 1.0) * 0.4)), 2)
     shorts.append(item)
 
-shorts.sort(key=lambda s: -s["overall_score"])
+def rank_key(s):
+    # Cold-open hook is the #1 reference trait: bias selection toward
+    # question/provocation openings and away from weak hooks, layered on top of
+    # Claude's holistic overall_score. A near-gate, not a hard drop — a source
+    # with no question-y moments still yields its best arcs.
+    bonus = {"question": 0.6, "provocation": 0.45}.get(s.get("hook_type", "claim"), 0.0)
+    bonus += max(-0.8, min(0.3, (s.get("hook_score", 0.0) - 6.0) * 0.15))
+    return s["overall_score"] + bonus
+
+shorts.sort(key=lambda s: -rank_key(s))
 shorts = shorts[:n]
 shorts.sort(key=lambda s: s["t0"])
 json.dump({"source": tx.get("source", ""), "shorts": shorts}, sys.stdout, indent=2)

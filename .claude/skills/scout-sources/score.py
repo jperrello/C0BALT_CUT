@@ -1,13 +1,32 @@
 #!/usr/bin/env python3
 # rank fully-fetched candidates by outlier score.
 # argv: <full_meta_dir> <out.json> [workdir]
-# score = 2*velocity + outlier + engagement + peaky
+# score = 2*velocity + outlier + engagement + peaky + curiosity
 #   velocity   = log10(1 + views/day)              (~0-6; freshness x reach)
 #   outlier    = min(10, views / subscribers)      (clip-channel signal: 3x+ = real, 5-10x = strong)
 #   engagement = min(5, comments per 1k views)     (talked-about-ness)
 #   peaky      = min(3, 10*stdev(heatmap values))  (clippability: spiky replay graph = quotable moments)
-import glob, hashlib, json, math, os, statistics, sys
+#   curiosity  = min(1.5, question/superlative title framing)  (cold-open-question yield)
+import glob, hashlib, json, math, os, re, statistics, sys
 from datetime import datetime, timezone
+
+
+def curiosity(title):
+    # bias toward sources whose own framing is a curiosity hook — question
+    # titles and superlatives yield the extractable cold-open question moments
+    # the pipeline now leads with ("how come…", "what's more likely…", "the
+    # richest woman ever…"). small, capped nudge.
+    t = title.lower().strip()
+    if not t:
+        return 0.0
+    b = 0.0
+    if "?" in t:
+        b += 1.0
+    if re.match(r"^(why|how|what|when|can|does|is|are|do|did|the truth|the real)\b", t):
+        b += 0.6
+    if " vs " in t or " vs. " in t or "richest" in t or "biggest" in t or "most " in t:
+        b += 0.4
+    return min(1.5, b)
 
 meta_dir, out_path = sys.argv[1], sys.argv[2]
 workdir = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -32,6 +51,7 @@ for f in glob.glob(os.path.join(meta_dir, "*.json")):
     hm = [p["value"] for p in (d.get("heatmap") or [])]
     peaky = min(3.0, 10 * statistics.pstdev(hm)) if len(hm) > 1 else 0.0
     url = f"https://www.youtube.com/watch?v={d['id']}"
+    cur = curiosity(d.get("title", ""))
     seen = bool(workdir) and os.path.isdir(
         os.path.join(workdir, hashlib.sha1(url.encode()).hexdigest()[:10]))
     cands.append({
@@ -48,12 +68,13 @@ for f in glob.glob(os.path.join(meta_dir, "*.json")):
         "replay_peakiness": round(peaky, 2),
         "age_days": days,
         "seen": seen,
-        "score": round(2 * velocity + outlier + engagement + peaky, 2),
+        "score": round(2 * velocity + outlier + engagement + peaky + cur, 2),
         "components": {
             "velocity": round(velocity, 2),
             "outlier": round(outlier, 2),
             "engagement": round(engagement, 2),
             "peaky": round(peaky, 2),
+            "curiosity": round(cur, 2),
         },
     })
 

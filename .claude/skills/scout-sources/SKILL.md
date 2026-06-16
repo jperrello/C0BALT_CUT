@@ -16,8 +16,11 @@ channel's baseline. The cheap keyless proxies, all available from yt-dlp:
 - **engagement** `min(5, comments per 1k views)` — talked-about-ness
 - **peaky** `min(3, 10 * stdev(replay heatmap))` — a spiky most-replayed graph
   means the video CONTAINS clippable moments; flat means evenly mediocre
+- **curiosity** `min(1.5, question/superlative framing in the title)` — sources
+  whose own title is a curiosity hook ("how come…", "richest woman ever") yield
+  the cold-open question moments the pipeline now leads with
 
-`score = velocity + outlier + engagement + peaky` (see `score.py`).
+`score = velocity + outlier + engagement + peaky + curiosity` (see `score.py`).
 
 ## Invoke
 
@@ -26,8 +29,9 @@ channel's baseline. The cheap keyless proxies, all available from yt-dlp:
 ```
 
 - `out.json` (optional): default `work/_scout/candidates.json`
-- `query ...` (optional): seed searches; default reads `niches.txt` (seeded
-  from channel analytics — big-name humor pods + productivity/AI debunking)
+- `query ...` (optional): seed searches; default reads `niches.txt` (channel
+  analytics — humor pods + productivity/AI — plus visually-rich, question-driven
+  niches: space, wealth, true-crime, nature, history)
 
 Env knobs: `SCOUT_PER_QUERY` (12 results/query), `SCOUT_SHORTLIST` (20 full
 fetches), `SCOUT_MIN_VIEWS` (100000), `SCOUT_DUR_MIN`/`SCOUT_DUR_MAX`

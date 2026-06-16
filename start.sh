@@ -578,6 +578,16 @@ run_phase3_captions() {
     echo "chunk-captions" > "$dir/clip_${idx}.fail.captions"; return 1
   }
 
+  # jump-cut: manufacture multi-cam reframe churn on talking-head stretches.
+  # Timeline-preserving (audio copied), runs on the clean vertical BEFORE
+  # zoom-punch/cutaways/captions so none warp (JUMP_CUT=0 skips).
+  local jc="$dir/clip_${idx}.jc.mp4"
+  if [[ "${JUMP_CUT:-1}" != "0" ]]; then
+    log "[phase 3 / span $idx / captions] jump-cut"
+    bash "$(skill jump-cut)" "$vert" "$ctx" "$jc" >/dev/null || cp "$vert" "$jc"
+    vert="$jc"
+  fi
+
   # zoom-punch: deterministic punch-ins at RMS-peak words (ZOOM_PUNCH=0 skips).
   # Runs on the clean vertical BEFORE cutaways/captions so neither warps.
   local zoomed="$dir/clip_${idx}.zoom.mp4"

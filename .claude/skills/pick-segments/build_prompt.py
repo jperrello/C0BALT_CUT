@@ -148,17 +148,25 @@ ASSEMBLE THE STORY WITH CUTS (important): a great short is EDITED, not just a ra
   - The SUM of cut durations must be {dmin:.0f}-{dmax:.0f}s. Keep cuts to 1-3; don't over-chop.
   - t0 = first cut's start, t1 = last cut's end.
   - A single-cut short is just "cuts": [[t0, t1]] — that's fine and common.
+  - QUESTION-LEAD ASSEMBLY: a cold viewer stops for a hook they instantly get (see COLD-OPEN HOOK below). If the best arc's payoff is strong but its natural opening is slow, make your FIRST cut a short question or provocation pulled from EARLIER in the SAME topic that sets up exactly this payoff, then cut straight to the payoff. The lead-in must be about the same thing — you are restoring the Q→A the edit lost, never bolting on an unrelated question — and must occur earlier in the source than the payoff (cuts always play in source-chronological order).
 
-SCROLL-STOP HOOK (highest priority — shorts that don't grab in the first 1-2s are dead):
-You are picking the spans a viewer is LEAST likely to scroll past and MOST likely to finish. The OPENING WORDS of each span are what a viewer sees first. Score each pick on:
-  - hook_score (0-10): does the first 1-2s plant a curiosity question OR land a striking visual/factual claim? Reward concrete nouns, numbers, named subjects, surprising statements, direct questions. Punish vague setup.
-  - context_score (0-10): can a cold viewer understand the setup, the turn, and why the ending matters without missing the previous or next sentence? Penalize abrupt endings hard.
-  - structure_score (0-10): does the span have hook → foreshadow → payoff → landing? Is there but/therefore causality between beats (not just "and then")? Does it open a curiosity loop that resolves by the end?
-  - overall_score (0-10): your holistic rank — would you stop scrolling AND watch to the end? Weigh complete standalone meaning first, then hook strength, then high vocal energy/affect, lively exchange, concrete nouns, real stakes, RMS peaks, and replay peaks. RMS/replay can break ties but cannot rescue a confusing or abrupt clip.
+COLD-OPEN HOOK (highest priority — shorts that don't grab in the first 1-2s are dead):
+Frame 1 IS the hook — no preamble, no throat-clearing. The opening line is what a scrolling stranger sees and hears first (often muted). The strongest openings are understandable with ZERO context:
+  - a QUESTION a stranger has also wondered ("How come I can see the moon during the day?", "What's more likely, teleportation or time travel?"),
+  - a PROVOCATION / contrarian claim ("the richest women in the world — almost all of it is divorce money"),
+  - or a striking, concrete factual claim with a named subject or a number.
+PREFER spans whose literal first sentence is already one of these; use QUESTION-LEAD ASSEMBLY (above) when the payoff is great but its natural open is weak. Score each pick on:
+  - hook_score (0-10): does the FIRST 1-2s land one of the three openings above for a cold viewer? Reward direct questions, contrarian provocations, concrete nouns, numbers, named subjects. Punish vague setup, pronouns with no referent, and slow throat-clearing.
+  - context_score (0-10): can a cold viewer understand the setup, the turn, and why the ending matters without the surrounding sentences? Penalize abrupt endings hard.
+  - structure_score (0-10): does the span have hook → foreshadow → payoff → landing, with but/therefore causality between beats (not just "and then")? Does it open a curiosity loop that resolves by the end?
+  - overall_score (0-10): your holistic rank — would you stop scrolling AND watch to the end? Weigh complete standalone meaning first, then cold-open hook strength, then vocal energy/affect, concrete stakes, RMS peaks, and replay peaks. RMS/replay can break ties but cannot rescue a confusing or abrupt clip.
+Also report, for each pick:
+  - opening_line: the verbatim first ~8-12 words a viewer hears (after any question-lead assembly).
+  - hook_type: "question", "provocation", or "claim" — what that opening line is.
 
 HARD REJECT — do NOT pick spans whose first transcript word is filler:
   so, and, but, um, uh, like, well, okay, ok, basically, actually, anyway, you know, I mean, I think, I guess, kind of, sort of
 Trim the span start forward to a stronger opening word if needed (still respect {dmin:.0f}s minimum).
 
 Reply with ONLY a JSON object (no prose, no code fences):
-{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "rationale": "<short reason>", "title_suggestion": "<short title>", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "overall_score": <0-10>}}]}}""")
+{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "rationale": "<short reason>", "title_suggestion": "<short title>", "opening_line": "<verbatim first ~8-12 words>", "hook_type": "question|provocation|claim", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "overall_score": <0-10>}}]}}""")

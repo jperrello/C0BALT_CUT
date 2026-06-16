@@ -156,6 +156,13 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     vert="$dir/clip_$idx.vert.mp4"
     bash "$(skill fill-vertical)" "$clip" "$vert" >/dev/null
 
+    # jump-cut: multi-cam reframe churn on talking-head stretches (JUMP_CUT=0 skips)
+    if [[ "${JUMP_CUT:-1}" != "0" ]]; then
+      jc="$dir/clip_$idx.jc.mp4"
+      bash "$(skill jump-cut)" "$vert" "$ctx" "$jc" >/dev/null || cp "$vert" "$jc"
+      vert="$jc"
+    fi
+
     # zoom-punch: deterministic punch-ins at RMS-peak words (ZOOM_PUNCH=0 skips)
     if [[ "${ZOOM_PUNCH:-1}" != "0" ]]; then
       zoomed="$dir/clip_$idx.zoom.mp4"
