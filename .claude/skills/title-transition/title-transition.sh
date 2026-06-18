@@ -2,8 +2,9 @@
 # title-transition: animate the title in the TOP banner over the LIVE opening
 # footage (cold open — no blocking card), then let it clear by TITLE_SWAP so
 # brand-overlays can fade the source citation into the same top slot. five
-# styles, each a PIL frame sequence (styles.py). NO SFX (the card-era boom/riser
-# is retired) and NO full-frame bg treatment (it shook/dimmed the live shot).
+# styles, each a PIL frame sequence (styles.py) with its OWN matched SFX bed
+# (events.json -> sfx.py, mixed under the live audio; TITLE_SFX=0 disables) and
+# NO full-frame bg treatment (it shook/dimmed the live shot).
 set -euo pipefail
 
 input="${1:-}"
@@ -37,7 +38,9 @@ fi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 meta="$out.ttmeta"
-sig="$title|$style|$dur|top$anchor"
+# TITLE_SFX=0 disables the style-matched animation SFX (default on).
+sfx_on="${TITLE_SFX:-1}"
+sig="$title|$style|$dur|top$anchor|sfx$sfx_on"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -63,9 +66,22 @@ trap 'rm -rf "$tmp"' EXIT
 
 TITLE_ANCHOR_FRAC="$anchor" python3 "$here/styles.py" "$style" "$title" "$tmp" "$w" "$h" "$dur" "$fps"
 
+# style-matched animation SFX: styles.py writes events.json (the per-style cue
+# list — slam=riser+boom, glitch=zaps, typewriter=keys, bounce=pops, etc.);
+# sfx.py synthesizes it to a wav mixed UNDER the live audio so the title's
+# sound matches its animation. TITLE_SFX=0 skips it.
+sfx_wav=""
+if [[ "$sfx_on" != "0" && -f "$tmp/events.json" ]]; then
+  if python3 "$here/sfx.py" "$tmp/events.json" "$tmp/sfx.wav" >&2; then
+    sfx_wav="$tmp/sfx.wav"
+  else
+    echo "title-transition: sfx synth failed — continuing silent" >&2
+  fi
+fi
+
 # title PNG sequence overlaid directly on the LIVE footage at the top banner —
-# no full-frame bg treatment (the old flash/shake/dim shook the live shot) and
-# no SFX. styles.py frames are full-frame, so overlay at 0:0.
+# no full-frame bg treatment (the old flash/shake/dim shook the live shot).
+# styles.py frames are full-frame, so overlay at 0:0.
 ov="[0:v][1:v]overlay=0:0:eof_action=pass:format=auto[v]"
 
 staging="$tmp/$(basename "$out")"
@@ -77,7 +93,17 @@ while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args mid)
 while IFS= read -r -d '' a; do vdec+=("$a"); done < <(vt_decode_args)
 while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
 
-if [[ "$has_audio" == "audio" ]]; then
+if [[ "$has_audio" == "audio" && -n "$sfx_wav" ]]; then
+  # mix the synthesized animation SFX under the live audio (SFX starts at the
+  # title animate-in, t=0); apad keeps amix from truncating to the short bed.
+  ffmpeg -y -hide_banner -loglevel error \
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -framerate "$fps" -i "$tmp/f_%04d.png" \
+    -i "$sfx_wav" \
+    -filter_complex "${ov};[2:a]apad[sfx];[0:a][sfx]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]" \
+    -map "[v]" -map "[a]" \
+    "${venc[@]}" \
+    -c:a aac -b:a 192k "${vthr[@]}" -movflags +faststart "$staging"
+elif [[ "$has_audio" == "audio" ]]; then
   ffmpeg -y -hide_banner -loglevel error \
     ${vdec[@]+"${vdec[@]}"} -i "$input" -framerate "$fps" -i "$tmp/f_%04d.png" \
     -filter_complex "${ov}" \

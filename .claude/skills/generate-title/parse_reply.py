@@ -4,7 +4,8 @@ import json, re, sys
 reply_path, transcript_path = sys.argv[1:3]
 
 FILLERS = {"so","and","but","um","uh","like","well","okay","ok","basically",
-           "actually","anyway","you","i","i'm","im","my","me","we","us"}
+           "actually","anyway","you","i","i'm","im","my","me","we","us",
+           "he","him","his","she","her","hers","they","them","their","theirs"}
 # Punctuation we don't want in a chyron. We STRIP these, we do not reject on them —
 # a good title with a stray colon/quote is salvaged, not thrown away to gibberish.
 STRIP_CHARS = '?!:"“”‘’.'

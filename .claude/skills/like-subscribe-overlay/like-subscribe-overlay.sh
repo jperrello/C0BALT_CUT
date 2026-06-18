@@ -6,7 +6,8 @@
 # so the whole CTA lands WITHIN THE FIRST THIRD of the clip — early enough
 # that viewers who bail never miss it — while staying clear of the ~2.5s
 # title card. The asset is time-stretched (setpts) to fit dur and pinned to
-# the lower third. Bell SFX layered under the click.
+# the lower third. No SFX — the CTA overlays silently and the clip audio
+# passes through untouched (the old bell ding is retired).
 set -euo pipefail
 
 input="${1:-}"
@@ -29,7 +30,7 @@ if [[ ! -f "$asset" ]]; then
 fi
 
 meta="$out.lsmeta"
-sig="$dur|$pos|mov-v4-first-third"
+sig="$dur|$pos|mov-v5-first-third-nosfx"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -70,17 +71,12 @@ print(round(s, 4))")"
 # time-stretch factor: multiply input PTS by this to fit dur seconds.
 # factor < 1 => asset plays faster than its native rate.
 sf="$(python3 -c "print(round(float('$dur') / float('$adur'), 6))")"
-# bell SFX fires near the gif's "click" moment — slightly after start.
-fly="$(python3 -c "print(round(min(0.35, float('$dur')/6), 4))")"
-
 has_audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_type \
   -of default=nw=1:nk=1 "$input" 2>/dev/null || true)"
 
 mkdir -p "$(dirname "$out")"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-
-python3 "$here/make_sfx.py" "$tmp/sfx.wav" "$dur" "$fly"
 
 # overlay sizing: full clip width (native asset is 1080x320).
 # centered vertically in the bottom third (center at ~5/6 H).
@@ -98,18 +94,18 @@ staging="$tmp/$(basename "$out")"
 
 if [[ "$has_audio" == "audio" ]]; then
   ffmpeg -y -hide_banner -loglevel error \
-    -i "$input" -i "$asset" -itsoffset "$start" -i "$tmp/sfx.wav" \
-    -filter_complex "${ov};[2:a]apad[sfx];[0:a][sfx]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]" \
-    -map "[v]" -map "[a]" \
+    -i "$input" -i "$asset" \
+    -filter_complex "${ov}" \
+    -map "[v]" -map 0:a \
     -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
     -c:a aac -b:a 192k -movflags +faststart "$staging"
 else
   ffmpeg -y -hide_banner -loglevel error \
-    -i "$input" -i "$asset" -itsoffset "$start" -i "$tmp/sfx.wav" \
-    -filter_complex "${ov};[2:a]apad[a]" \
-    -map "[v]" -map "[a]" -shortest \
+    -i "$input" -i "$asset" \
+    -filter_complex "${ov}" \
+    -map "[v]" \
     -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
-    -c:a aac -b:a 192k -movflags +faststart "$staging"
+    -movflags +faststart "$staging"
 fi
 
 mv "$staging" "$out"

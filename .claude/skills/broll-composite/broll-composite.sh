@@ -18,7 +18,7 @@ fi
 [[ -f "$plan"    ]] || { echo "broll-composite: plan not found: $plan" >&2; exit 2; }
 
 here="$(cd "$(dirname "$0")" && pwd)"
-sfx="${BROLL_SFX:-1}"
+sfx="${BROLL_SFX:-0}"
 mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
 sig="$(mtime "$in_clip")|$(mtime "$plan")|v2|sfx=$sfx"
 meta="$out.compmeta"

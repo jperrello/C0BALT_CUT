@@ -65,11 +65,9 @@ beneath it for those 4 seconds — intended).
    changes): `build-cta.js` steps `cta.html`'s deterministic `window.setT(t)`
    frame-by-frame in headless Chromium (Playwright, `omitBackground`) and
    ffmpeg-encodes the transparent PNGs to `assets/cta.mov` (ProRes 4444).
-2. `make_sfx.py` synthesizes a soft two-note bell ding as a stdlib-`wave`
-   WAV — one ding as the pill lands, a quieter accent mid-hold.
-3. `like-subscribe-overlay.sh` time-stretches the asset to `dur` (setpts),
-   pins it to the lower third, `enable`s it for `[start, start+dur]` where
-   `start = min(pos * clip_duration, clip_duration/3 - dur)` floored at 3.0s
-   (title-card clearance), and mixes the SFX (timed with
-   `-itsoffset start`) over the source audio (`amix … normalize=0` +
-   `alimiter`).
+2. `like-subscribe-overlay.sh` time-stretches the asset to `dur` (setpts),
+   pins it to the lower third, and `enable`s it for `[start, start+dur]`
+   where `start = min(pos * clip_duration, clip_duration/3 - dur)` floored
+   at 3.0s (title-card clearance). The CTA overlays SILENTLY — the clip's
+   source audio passes straight through (`-map 0:a`, no mix). The old
+   bell-ding SFX (`make_sfx.py`) is retired; `make_sfx.py` is unused.

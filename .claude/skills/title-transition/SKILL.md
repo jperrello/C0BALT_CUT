@@ -44,17 +44,23 @@ the source citation into the same top slot (see that skill).
 | `cinematic` | documentary | Didot serif tracks in from wide letter-spacing, sapphire rule draws out |
 
 All styles keep the brand language where it fits: Sapphire Glow `#2E6BFF`
-accent word, black-stroked type, Platinum white (`brand/BRAND.md`). NO SFX (the
-card-era riser/boom/clicks are retired) and NO full-frame bg treatment (the old
-flash/shake/dim shook the live shot). `events.json`/`sfx.py` remain in-tree but
-unused by the cold-open path.
+accent word, black-stroked type, Platinum white (`brand/BRAND.md`). Each style
+carries its OWN matched SFX (slam=riser+boom, typewriter=key clicks, glitch=zaps,
+bounce=pops+boing, cinematic=swell+thump) — `styles.py` emits the `events.json`
+cue list, `sfx.py` synthesizes it (stdlib only), and it is mixed UNDER the live
+audio so the title's sound matches its animation. `TITLE_SFX=0` disables it. The
+old card-era full-screen riser/boom-over-a-blocking-card is gone — this is the
+animation's own sound, not a card stinger — and there is still NO full-frame bg
+treatment (the old flash/shake/dim shook the live shot).
 
 ## How
 
 The local ffmpeg has no drawtext/libass, so `styles.py` renders the animation
 as a full-frame transparent PNG sequence (30fps), anchored at
 `TITLE_ANCHOR_FRAC`. `title-transition.sh` overlays it directly on the live
-footage (no bg treatment) and stream-copies the clip audio (no SFX mix).
+footage (no bg treatment) and mixes the style's synthesized SFX (`sfx.py` ->
+`events.json`) under the clip audio; `TITLE_SFX=0` falls back to a plain
+audio stream-copy.
 
 ## Output
 

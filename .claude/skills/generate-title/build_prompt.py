@@ -86,9 +86,20 @@ hook on its own.
 ## What the title does
 
 The title LOADS A DEBT that the clip PAYS. It promises one specific
-moment, reveal, fact, or contradiction inside the clip — without giving
-away the answer. Done right, a viewer who would have swiped past now
-holds still to find out what the title was pointing at.
+moment, reveal, fact, or contradiction inside the clip. Done right, a
+viewer who would have swiped past now holds still to find out what the
+title was pointing at.
+
+But a debt nobody understands is no hook. These clips are pulled OUT OF
+CONTEXT from a long talk, so the title is the only thing telling a
+stranger what this moment is even about. The title must convey the clip's
+actual POINT — the message, finding, or claim a viewer would walk away
+with — not just gesture vaguely at it. Withhold the precise punchline (the
+exact number, name, or final word), NOT the subject and stakes of the
+clip. "WHAT GOLD STARS DID TO THESE KIDS" fails: it hides the entire point
+behind "WHAT...DID" and "THESE KIDS" means nothing to a stranger. State
+the finding: rewards backfired, kids quit what they loved. Name the real
+thing, surface the real consequence, hold back only the precise figure.
 
 {step0}## Step 1 — analyze the clip
 
@@ -98,10 +109,14 @@ Read the transcript below. Decide if the clip has a single clear PAYOFF:
 - A contradiction's resolution
 - A reaction or moment the rest of the clip builds toward
 
-Note whether the clip has a clear human/character SUBJECT (a named
-person, character, or recognizable figure) — if yes, identify them by
-their short familiar name (e.g. "Speed" not "IShowSpeed"; first name only
-when obvious from context).
+Identify the clip's human SUBJECT and NAME them. The speaker is almost
+always the person named in the source metadata below — derive their short
+familiar name from the source video title / uploader (e.g. source title
+"Caseoh | Jynxzi Podcast #1" → "CASEOH"; "Speed" not "IShowSpeed"; first
+name only when obvious). If the clip is ABOUT a different named person,
+use that name. The transcript itself often only says "I" / "he" — the
+metadata is how you recover the real name. You MUST resolve every subject
+to a proper name; a title may not fall back to a pronoun.
 
 ## Step 2 — pick ONE framing
 
@@ -121,7 +136,16 @@ c. Contradiction / "what people get wrong"
    implied by the transcript. Use only when the clip actually rebuts
    something — overhype kills retention later.
 
-Stakes/consequence framing is NOT allowed.
+d. Result / consequence
+   State what HAPPENED or what the finding WAS — the outcome the clip
+   lands on. Use when the clip is an experiment, story, or cause→effect
+   with a clear result. Name the cause and the kind of consequence
+   without dropping the precise figure: "GOLD STARS MADE KIDS QUIT
+   DRAWING" works; "WHAT GOLD STARS DID TO THESE KIDS" does not.
+
+Pick the framing that conveys the clip's point most clearly to a
+stranger. When in doubt, prefer the framing that states the most of the
+message — under-explaining loses more viewers than mild spoiling.
 
 ## Step 3 — if no clear payoff exists
 
@@ -135,14 +159,32 @@ return empty.
 
 - THIRD PERSON ONLY. No "I", "me", "my", "we", "us", "our", "you",
   "your". Chyron voice.
-- DO NOT REVEAL THE PAYOFF. The title may not contain the punchline
-  word, number, or named outcome the clip is built around. If the
-  clip's reveal is "octopuses have nine brains", the title may
-  reference octopuses, brains, or "more than you'd think" — but never
-  "NINE". Load the debt; let the clip pay it.
+- NO PRONOUNS STANDING IN FOR A PERSON. The title may not use "HE",
+  "HIM", "HIS", "SHE", "HER", "HERS", "THEY", "THEM", "THEIR" as the
+  ONLY reference to a person. Every person must be a PROPER NAME,
+  recovered from the source metadata when the transcript only has a
+  pronoun (see Step 1). "TWITCH CHECK MADE HIM QUIT" fails — write
+  "TWITCH CHECK MADE CASEOH QUIT". The ONLY allowed pronoun is a
+  possessive whose antecedent is ALREADY NAMED in the same title ("FANS
+  SAY CASEOH SAVED THEIR LIVES" is fine — "THEIR" = the named FANS).
+  Re-read your title before emitting and replace any person-pronoun that
+  lacks a named antecedent.
+- WITHHOLD THE PRECISE PUNCHLINE, NOT THE POINT. The title may not
+  contain the exact punchline word, number, or named final outcome the
+  clip is built around. If the clip's reveal is "octopuses have nine
+  brains", the title may say octopuses have more brains than you'd think
+  — but never "NINE". This is the ONLY thing you withhold. Do NOT hide
+  the subject, the cause, or the kind of result behind empty
+  constructions like "WHAT X DID" or "WHAT HAPPENED WHEN" — those
+  withhold the whole message and fail the test below.
 - COLD-VIEWER TEST. The title must make sense to someone who has never
   heard of the source video, channel, host, or topic. No referent that
   only existing viewers would understand.
+- MESSAGE TEST. A stranger reading the title must be able to say what
+  the clip is ABOUT and roughly what it claims — the point survives even
+  with the precise figure held back. If the title would leave them
+  guessing the subject (not just the answer), it fails. Self-check this
+  before emitting.
 - SILENT-COMPREHENSION TEST. The title must convey the promise without
   the audio playing underneath it. Assume the viewer has not heard a
   single word of the clip when they read the title.
@@ -161,6 +203,14 @@ return empty.
 
 - No vague pronouns: "THIS ONE TRICK", "THIS ONE THING", "THIS HABIT",
   "THE SECRET". These fail the cold-viewer test silently.
+- No demonstrative referents to unnamed groups or things: "THESE KIDS",
+  "THESE PEOPLE", "THIS STUDY", "THIS EXPERIMENT", "THIS MAN". A
+  stranger has no idea who/what they point to. Name the actual subject
+  or describe it concretely instead ("KIDS WHO LOVED DRAWING", not
+  "THESE KIDS").
+- No empty-withholding shells: "WHAT X DID", "WHAT HAPPENED WHEN",
+  "WHAT X REVEALED", "WHAT THEY FOUND". They hide the message instead
+  of the punchline. State the finding.
 - No clickbait intensifiers: "SHOCKING", "INSANE", "UNBELIEVABLE",
   "CRAZY", "MIND-BLOWING", "WILD". Defensibility lets these slip
   through as technically true; ban them outright.
