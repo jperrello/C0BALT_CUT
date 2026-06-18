@@ -5,7 +5,9 @@ reply_path, transcript_path = sys.argv[1:3]
 
 FILLERS = {"so","and","but","um","uh","like","well","okay","ok","basically",
            "actually","anyway","you","i","i'm","im","my","me","we","us"}
-BANNED_CHARS = set('?!:"“”‘’')
+# Punctuation we don't want in a chyron. We STRIP these, we do not reject on them —
+# a good title with a stray colon/quote is salvaged, not thrown away to gibberish.
+STRIP_CHARS = '?!:"“”‘’.'
 
 def clean(text):
     text = text.strip()
@@ -13,15 +15,18 @@ def clean(text):
     text = re.sub(r"\s+", " ", text)
     return text
 
-def usable(text):
-    if not text:
-        return False
-    if any(c in BANNED_CHARS for c in text):
-        return False
+# Salvage a reply line into a usable title instead of discarding it:
+# strip banned punctuation, drop trailing punctuation, cap at 7 words.
+# Returns "" only when nothing title-like survives.
+def salvage(text):
+    text = "".join(" " if c in STRIP_CHARS else c for c in text)
+    text = re.sub(r"\s+", " ", text).strip()
     words = text.split()
-    if not (1 <= len(words) <= 7):
-        return False
-    return True
+    if not words:
+        return ""
+    if len(words) > 7:
+        words = words[:7]
+    return " ".join(words).upper()
 
 def fallback():
     tx = json.load(open(transcript_path))
@@ -52,19 +57,27 @@ try:
 except Exception:
     pass
 
-# Take the first non-empty line.
+# A well-behaved reply is a single title line, but Claude sometimes prefixes a
+# stray sentence ("Here's the title:"). Walk lines and take the first that
+# salvages into a plausible title — prefer the LAST non-empty line if none of the
+# earlier ones look like a title (model often lands the answer last).
+lines = [clean(l) for l in raw.splitlines()]
+lines = [l for l in lines if l]
+
 candidate = ""
-for line in raw.splitlines():
-    s = clean(line)
-    if s:
-        candidate = s
+for s in lines:
+    cand = salvage(s)
+    # Heuristic: a real title is short and not an obvious instruction echo.
+    if cand and not s.lower().startswith(("here", "title", "sure", "the title")):
+        candidate = cand
         break
 
-candidate = candidate.upper()
+if not candidate and lines:
+    candidate = salvage(lines[-1])
 
-if usable(candidate):
+if candidate:
     print(candidate)
 else:
     fb = fallback()
-    print(fb, end="\n")
-    print(f"generate-title: reply unusable ({candidate!r}); fallback {fb!r}", file=sys.stderr)
+    print(fb)
+    print(f"generate-title: reply empty/unusable; fallback {fb!r}", file=sys.stderr)
