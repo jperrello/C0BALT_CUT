@@ -238,6 +238,11 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     final="$dir/clip_$idx.final.mp4"
     bash "$(skill bg-music)" "$ctaed" "$final" "$mood" >/dev/null || cp "$ctaed" "$final"
 
+    # end-card: closing CTA beat over the last ~2.5s (END_CARD=0 skips)
+    ended="$dir/clip_$idx.ended.mp4"
+    bash "$(skill end-card)" "$final" "$ended" >/dev/null || cp "$final" "$ended"
+    final="$ended"
+
     verdict="$(bash "$(skill qc-clip)" "$final")"
     ok="$(printf '%s' "$verdict" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pass"])')"
     if [[ "$ok" != "True" ]]; then
@@ -245,6 +250,9 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
       echo "short $idx: QC FAIL — $reason" >&2
       exit 3
     fi
+
+    # visual-cadence: non-fatal static-gap measurement (WARN if >MAX_STATIC_GAP)
+    bash "$(skill visual-cadence)" "$final" >/dev/null 2>&1 || true
 
     bash "$(skill save-local)" "$final" "$src" "short_$idx.mp4" >/dev/null
   )

@@ -712,6 +712,13 @@ run_phase4() {
   local final="$dir/clip_${idx}.final.mp4"
   bash "$(skill bg-music)" "$ctaed" "$final" "$mood" >/dev/null || cp "$ctaed" "$final"
 
+  # end-card: closing CTA beat over the last ~2.5s so the short lands on an
+  # intentional "FOLLOW FOR MORE" instead of dead-stopping (END_CARD=0 skips).
+  log "[phase 4 / span $idx] end-card"
+  local ended="$dir/clip_${idx}.ended.mp4"
+  bash "$(skill end-card)" "$final" "$ended" >/dev/null || cp "$final" "$ended"
+  final="$ended"
+
   log "[phase 4 / span $idx] qc-clip"
   local verdict; verdict="$(bash "$(skill qc-clip)" "$final")"
   local ok; ok="$(printf '%s' "$verdict" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pass"])')"
@@ -721,6 +728,12 @@ run_phase4() {
     echo "qc:$reason" > "$dir/clip_${idx}.fail.completion"
     return 1
   fi
+
+  # visual-cadence: non-fatal static-gap measurement (WARN if a stretch exceeds
+  # MAX_STATIC_GAP); diagnostic only, never blocks the save.
+  bash "$(skill visual-cadence)" "$final" "$dir/clip_${idx}.cadence.json" >/dev/null 2>&1 || true
+  local cad; cad="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(str(d.get("max_gap","?"))+"s pass="+str(d.get("pass")))' "$dir/clip_${idx}.cadence.json" 2>/dev/null || true)"
+  [[ -n "$cad" ]] && log "[phase 4 / span $idx] visual-cadence max_gap=$cad"
 
   log "[phase 4 / span $idx] name-short"
   local title_file="$dir/clip_${idx}.title.txt"

@@ -22,7 +22,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 meta="$out_json.vbmeta"
 in_mtime="$(stat -f %m "$in_clip" 2>/dev/null || stat -c %Y "$in_clip")"
 tx_mtime="$(stat -f %m "$in_tx"   2>/dev/null || stat -c %Y "$in_tx")"
-sig="$in_mtime|$tx_mtime|v2"
+sig="$in_mtime|$tx_mtime|v3"
 
 if [[ -f "$out_json" && -f "$meta" && "$(cat "$meta")" == "$sig" ]]; then
   echo "verify-bookends: cache hit at $out_json" >&2
@@ -99,6 +99,25 @@ boundaries = sorted({round(w["t0"], 3) for w in words} | {round(w["t1"], 3) for 
 head_bounds = [b for b in boundaries if b <= head_t1 + 0.5]
 tail_bounds = [b for b in boundaries if b >= tail_t0 - 0.5]
 
+# Mid-sentence opener guard: if the FIRST spoken word is a sentence-fragment
+# continuation, find a clean forward snap (first word after a >=0.25s gap)
+# within ~2s that still leaves a >=15s clip. Surfaced to Claude AND enforced
+# deterministically downstream, so "of picturing what's happened..." can't open.
+FRAGMENT_OPENERS = {"of","than","nor","whom","whose","thereof","therein",
+                    "wherein","whereby","whereas","and","but","so","because"}
+open_words = words_in(0.0, min(3.0, dur))
+first = open_words[0] if open_words else None
+first_word = first["w"].strip(".,?!").lower() if first else ""
+bad_open = first_word in FRAGMENT_OPENERS
+open_snap = None
+if bad_open and first is not None:
+    prev = first["t1"]
+    for w in open_words[1:]:
+        if w["t0"] - prev >= 0.25 and w["t0"] <= 2.0 and (dur - w["t0"]) >= 15.0:
+            open_snap = round(w["t0"], 3)
+            break
+        prev = w["t1"]
+
 json.dump({
     "dur": dur,
     "head_t1": head_t1,
@@ -107,6 +126,9 @@ json.dump({
     "tail_text": fmt(tail_words),
     "head_boundaries": head_bounds,
     "tail_boundaries": tail_bounds,
+    "first_word": first_word,
+    "bad_open": bad_open,
+    "open_snap": open_snap,
 }, sys.stdout)
 PY
 
@@ -126,8 +148,9 @@ Tail transcript: $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1
 
 Allowed head boundaries (snap t0 to one of these): $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read())["head_boundaries"])' "$tmp/snip.json")
 Allowed tail boundaries (snap t1 to one of these): $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read())["tail_boundaries"])' "$tmp/snip.json")
+First spoken word: $(python3 -c 'import json,sys; d=json.loads(open(sys.argv[1]).read()); print(repr(d.get("first_word","")), "(MID-SENTENCE FRAGMENT)" if d.get("bad_open") else "(ok)")' "$tmp/snip.json")
 
-You are checking THREE things:
+You are checking FOUR things:
 
 (1) CLEANLINESS — opening and closing must be free of partial syllables,
     co-speaker interjections, breath cutoffs, and off-shot frames.
@@ -155,6 +178,13 @@ You are checking THREE things:
     snapped to the nearest allowed tail boundary at or just past it.
     If the tail has no discrete payoff (continuous info), keep current
     behavior — only trim for cleanliness.
+
+(4) MID-SENTENCE START — if the first spoken word is a sentence fragment
+    (a dangling preposition or conjunction like "of", "than", "and",
+    "because" with no subject), the clip opens mid-thought and a scrolling
+    stranger hears a scrap of a sentence. Snap t0 FORWARD (inward only) to
+    the first word that begins a clean, self-contained phrase, keeping the
+    clip >= 15s. This is part of the swipe-away gate.
 
 Decide:
 - "keep" — all three checks pass.
@@ -197,7 +227,7 @@ run_claude_step verify-bookends "$prompt_file" "$reply_file" 2>"$tmp/claude.err"
 }
 
 # parse + validate
-python3 - "$reply_file" "$dur" "$out_json" <<'PY'
+python3 - "$reply_file" "$dur" "$out_json" "$tmp/snip.json" <<'PY'
 import json, re, sys
 reply = open(sys.argv[1]).read().strip()
 dur = float(sys.argv[2])
@@ -234,6 +264,23 @@ elif act == "drop":
     obj = {"action":"drop","reason":obj.get("reason","")}
 else:
     obj = {"action":"keep","reason":obj.get("reason","")}
+
+# Deterministic mid-sentence opener guard: force t0 forward off a fragment
+# opener even when Claude returned keep/short-trim (inward-only, <=2s removed,
+# >=15s left). Guarantees the swipe-away fix regardless of the vision verdict.
+try:
+    snip = json.load(open(sys.argv[4])) if len(sys.argv) > 4 else {}
+except Exception:
+    snip = {}
+osnap = snip.get("open_snap")
+if snip.get("bad_open") and isinstance(osnap, (int, float)) and osnap > 0 and obj.get("action") != "drop":
+    cur_t0 = float(obj["t0"]) if obj.get("action") == "trim" else 0.0
+    cur_t1 = float(obj["t1"]) if obj.get("action") == "trim" else dur
+    nt0 = max(cur_t0, float(osnap))
+    if nt0 > cur_t0 + 1e-3 and (nt0 + (dur - cur_t1)) <= 2.0 and (cur_t1 - nt0) >= 15.0:
+        r = obj.get("reason", "")
+        obj = {"action": "trim", "t0": round(nt0, 3), "t1": round(cur_t1, 3),
+               "reason": (r + " | fwd off mid-sentence opener").strip(" |")}
 
 with open(out_path, "w") as f:
     json.dump(obj, f)

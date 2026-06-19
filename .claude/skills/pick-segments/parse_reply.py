@@ -56,6 +56,11 @@ duration = (tx.get("segments") or [{"t1": 0}])[-1]["t1"]
 
 FILLERS = {"so","and","but","um","uh","like","well","okay","ok","basically","actually","anyway"}
 FILLER_BIGRAMS = {("you","know"),("i","mean"),("i","think"),("i","guess"),("kind","of"),("sort","of")}
+# High-precision sentence-fragment openers: words that almost never begin a
+# clean, self-contained hook (a scrolling stranger hears a mid-clause scrap,
+# e.g. "of picturing what's happened..."). Conservative on purpose — temporal
+# openers ("in/after/before/when") CAN hook a cold viewer, so they're excluded.
+FRAGMENT_OPENERS = {"of","than","nor","whom","whose","thereof","therein","wherein","whereby","whereas"}
 
 def first_words(t0, k=2):
     words = tx.get("words") or []
@@ -76,7 +81,7 @@ def starts_with_filler(t0):
     fw = first_words(t0, 2)
     if not fw:
         return False
-    if fw[0] in FILLERS:
+    if fw[0] in FILLERS or fw[0] in FRAGMENT_OPENERS:
         return True
     if len(fw) >= 2 and (fw[0], fw[1]) in FILLER_BIGRAMS:
         return True
@@ -131,7 +136,7 @@ for sh in data.get("shorts", []):
         print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (crosses topic boundary)", file=sys.stderr)
         continue
     if starts_with_filler(t0):
-        print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (filler opening)", file=sys.stderr)
+        print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (filler/fragment opening)", file=sys.stderr)
         continue
     seen.append((t0, t1))
     item = {
