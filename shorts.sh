@@ -175,6 +175,15 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     chunks="$dir/clip_$idx.chunks.json"
     bash "$(skill chunk-captions)" "$ctx" "$chunks" >/dev/null
 
+    # switch-faces: hard-cut to a non-speaking listener's reaction shot at phrase
+    # boundaries, cropped from the 16:9 source ($clip). Timeline-preserving; solo
+    # talking-heads pass through (SWITCH_FACES=0 skips)
+    if [[ "${SWITCH_FACES:-1}" != "0" ]]; then
+      switched="$dir/clip_$idx.sw.mp4"
+      bash "$(skill switch-faces)" "$vert" "$clip" "$ctx" "$switched" "$chunks" >/dev/null \
+        && vert="$switched" || true
+    fi
+
     # broll-pick: Claude anchors -> mcptube/yt-dlp sourced cutaways -> broll_plan.json
     broll_plan="$dir/clip_$idx.broll_plan.json"
     bash "$(skill broll-pick)" "$ctx" "$chunks" "$ingest_json" "$broll_plan" >/dev/null || echo '{"picks":[],"ingested_video_ids":[]}' > "$broll_plan"

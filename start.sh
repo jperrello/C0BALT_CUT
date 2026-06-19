@@ -550,6 +550,7 @@ print(s["t0"], s["t1"])' "$span_out")
   # Stash paths for downstream phases
   printf '%s\n' "$vert" > "$dir/clip_${idx}.vert.path"
   printf '%s\n' "$ctx_pre" > "$dir/clip_${idx}.ctx.path"
+  printf '%s\n' "$clip_pre" > "$dir/clip_${idx}.src16.path"
   return 0
 }
 
@@ -596,6 +597,20 @@ run_phase3_captions() {
     bash "$(skill zoom-punch)" "$vert" "$ctx" "$zoomed" >/dev/null || cp "$vert" "$zoomed"
   else
     zoomed="$vert"
+  fi
+
+  # switch-faces: hard-cut to a non-speaking listener's reaction shot at speech
+  # pauses, cropped from the 16:9 source. Timeline-preserving, runs on the clean
+  # vertical BEFORE cutaways/captions (which override/burn on top). Solo
+  # talking-heads pass through (SWITCH_FACES=0 skips).
+  if [[ "${SWITCH_FACES:-1}" != "0" ]]; then
+    local src16; src16="$(cat "$dir/clip_${idx}.src16.path" 2>/dev/null || echo "")"
+    if [[ -n "$src16" && -f "$src16" ]]; then
+      log "[phase 3 / span $idx / captions] switch-faces"
+      local switched="$dir/clip_${idx}.sw.mp4"
+      bash "$(skill switch-faces)" "$zoomed" "$src16" "$ctx" "$switched" "$chunks" >/dev/null \
+        && zoomed="$switched" || true
+    fi
   fi
 
   # broll-pick: Claude anchors -> mcptube/yt-dlp sourced cutaways -> broll_plan.json
