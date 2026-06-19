@@ -20,9 +20,10 @@ fi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 
-# the top credit chyron shares its slot with the cold-open title (title-transition
-# holds the title there until TITLE_SWAP); fade the citation in at the same second.
-swap="${TITLE_SWAP:-2.0}"
+# the source citation rides the FINAL CREDIT_TAIL seconds of the clip (fades in
+# then, holds to the end) — it no longer time-shares the top banner with the
+# cold-open title, which now owns that slot uncontested at the open.
+tail="${CREDIT_TAIL:-3.0}"
 
 title="$(python3 -c '
 import json, sys
@@ -32,7 +33,7 @@ print((d.get("title") or d.get("id") or d.get("source_id") or "Unknown").strip()
 [[ -n "$title" ]] || title="Unknown"
 
 meta="$out.bometa"
-sig="$title|swap$swap"
+sig="$title|tail$tail"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -61,11 +62,15 @@ python3 "$here/../watermark/render_watermark.py" "$tmp/mark.png" "$w" "$h"
 dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$input")"
 [[ "$dur" =~ ^[0-9.]+$ ]] || dur=600
 
-# Credit top chyron at y≈4% — but it fades IN at TITLE_SWAP so the cold-open
-# title owns the top banner first; watermark bottom-anchored at y≈97.5% for the
-# whole clip. Credit is a looped+faded stream so the fade applies to its alpha.
-ov="[1:v]fade=t=in:st=${swap}:d=0.2:alpha=1[cr];\
-[0:v][cr]overlay=x='(W-w)/2':y='H*0.04':enable='gte(t,${swap})':format=auto[v1];\
+# Citation appears only in the FINAL `tail` seconds (cstart = dur - tail, floored
+# at 0); watermark bottom-anchored at y≈97.5% for the whole clip.
+cstart="$(awk -v d="$dur" -v t="$tail" 'BEGIN{s=d-t; if(s<0)s=0; printf "%.3f", s}')"
+
+# Credit top chyron at y≈4% — fades IN at cstart and holds to the end; watermark
+# bottom-anchored at y≈97.5% for the whole clip. Credit is a looped+faded stream
+# so the fade applies to its alpha.
+ov="[1:v]fade=t=in:st=${cstart}:d=0.2:alpha=1[cr];\
+[0:v][cr]overlay=x='(W-w)/2':y='H*0.04':enable='gte(t,${cstart})':format=auto[v1];\
 [v1][2:v]overlay=x='(W-w)/2':y='H*0.975-h':format=auto[v]"
 
 staging="$tmp/$(basename "$out")"

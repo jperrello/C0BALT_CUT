@@ -1,6 +1,6 @@
 ---
 name: source-credit
-description: Overlay a persistent "Original video: <title>" credit near the TOP of a finished short. Reads the source title from work/<id>/ingest.json and renders it as a transparent PNG via PIL; ffmpeg composites it for the whole clip duration. Positioned at the top so it sits above the captions (lower third) and clear of the centered title card. Runs after title-transition and before loudnorm in the per-span chain.
+description: Overlay a persistent "Original video: <title>" credit near the TOP of a finished short. Reads the source title from work/<id>/ingest.json and renders it as a transparent PNG via PIL; ffmpeg composites it only over the FINAL CREDIT_TAIL seconds (default 3.0s) so it lands on the closing beat. Positioned at the top so it sits above the captions (lower third) and clear of the centered title card. Runs after title-transition and before loudnorm in the per-span chain.
 allowed-tools: Bash
 user-invocable: true
 ---

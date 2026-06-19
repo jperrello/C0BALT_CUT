@@ -23,12 +23,12 @@ print((d.get("title") or d.get("id") or d.get("source_id") or "Unknown").strip()
 ' "$ingest")"
 [[ -n "$title" ]] || title="Unknown"
 
-# fades in at TITLE_SWAP so the cold-open title (title-transition) owns the top
-# banner first — matches brand-overlays' timing.
-swap="${TITLE_SWAP:-2.0}"
+# rides the FINAL CREDIT_TAIL seconds (fades in then, holds to the end) so the
+# cold-open title owns the top banner uncontested — matches brand-overlays.
+tail="${CREDIT_TAIL:-3.0}"
 
 meta="$out.scmeta"
-sig="$title|swap$swap"
+sig="$title|tail$tail"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -56,10 +56,13 @@ python3 "$here/render_credit.py" "$title" "$tmp/credit.png" "$w" "$h"
 dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$input")"
 [[ "$dur" =~ ^[0-9.]+$ ]] || dur=600
 
+# Citation rides only the FINAL `tail` seconds (cstart = dur - tail, floored at 0).
+cstart="$(awk -v d="$dur" -v t="$tail" 'BEGIN{s=d-t; if(s<0)s=0; printf "%.3f", s}')"
+
 # Center horizontally; anchor banner near the TOP of the frame (y≈77 on
-# 1080x1920). Sits above the lower-third captions. Fades in at TITLE_SWAP so the
-# cold-open title holds the top banner first, then hands off to this citation.
-ov="[1:v]fade=t=in:st=${swap}:d=0.2:alpha=1[cr];[0:v][cr]overlay=x='(W-w)/2':y='H*0.04':enable='gte(t,${swap})':format=auto[v]"
+# 1080x1920). Sits above the lower-third captions. Fades in at cstart and holds
+# to the end so it lands on the final beat.
+ov="[1:v]fade=t=in:st=${cstart}:d=0.2:alpha=1[cr];[0:v][cr]overlay=x='(W-w)/2':y='H*0.04':enable='gte(t,${cstart})':format=auto[v]"
 
 staging="$tmp/$(basename "$out")"
 
