@@ -13,7 +13,7 @@ W, H = int(sys.argv[4]), int(sys.argv[5])
 dur, fps = float(sys.argv[6]), int(sys.argv[7])
 label = sys.argv[8] if len(sys.argv) > 8 else ""
 
-IMPACT = "/System/Library/Fonts/Supplemental/Impact.ttf"
+IMPACT = "/Users/jperr/Documents/shorts/brand/fonts/Bangers-Regular.ttf"
 COURIER = "/System/Library/Fonts/Supplemental/Courier New Bold.ttf"
 FUTURA = "/System/Library/Fonts/Supplemental/Futura.ttc"
 DIDOT = "/System/Library/Fonts/Supplemental/Didot.ttc"

@@ -9,7 +9,7 @@ out = sys.argv[2]
 W = int(sys.argv[3])
 H = int(sys.argv[4])
 
-FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
+FONT = "/Users/jperr/Documents/shorts/brand/fonts/Bangers-Regular.ttf"
 LABEL = "Original video:"
 BLUE = (46, 107, 255, 255)      # Sapphire Glow #2E6BFF — matches burn-subtitles + title accent
 WHITE = (245, 245, 240, 255)

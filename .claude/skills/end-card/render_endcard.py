@@ -10,7 +10,7 @@ line2 = (sys.argv[2] if len(sys.argv) > 2 else "").strip()
 out = sys.argv[3]
 W, H = int(sys.argv[4]), int(sys.argv[5])
 
-FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
+FONT = "/Users/jperr/Documents/shorts/brand/fonts/Bangers-Regular.ttf"
 WHITE = (232, 236, 241, 255)    # Platinum #E8ECF1
 BLUE = (46, 107, 255, 255)      # Sapphire Glow #2E6BFF — matches captions + title accent
 STROKE = (0, 0, 0, 255)

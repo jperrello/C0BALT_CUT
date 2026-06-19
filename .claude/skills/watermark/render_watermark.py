@@ -8,7 +8,7 @@ out = sys.argv[1]
 W = int(sys.argv[2])
 H = int(sys.argv[3])
 
-FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
+FONT = "/Users/jperr/Documents/shorts/brand/fonts/Bangers-Regular.ttf"
 PLATINUM = (232, 236, 241, 200)
 SAPPHIRE = (46, 107, 255, 230)
 STROKE = (0, 0, 0, 200)

@@ -14,7 +14,7 @@ style = sys.argv[7] if len(sys.argv) > 7 else "chunks"
 fs = int(sys.argv[8]) if len(sys.argv) > 8 else 72
 video = sys.argv[9] if len(sys.argv) > 9 else None
 
-FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
+FONT = "/Users/jperr/Documents/shorts/brand/fonts/Bangers-Regular.ttf"
 WHITE = (245, 245, 240, 255)
 ACCENT = (46, 107, 255, 255)  # Sapphire Glow #2E6BFF — brand/BRAND.md palette
 STROKE = (0, 0, 0, 255)

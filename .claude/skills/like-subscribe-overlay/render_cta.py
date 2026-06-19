@@ -10,7 +10,7 @@ out = sys.argv[1]
 W = int(sys.argv[2])
 H = int(sys.argv[3])
 
-FONT = "/System/Library/Fonts/Supplemental/Impact.ttf"
+FONT = "/Users/jperr/Documents/shorts/brand/fonts/Bangers-Regular.ttf"
 WHITE = (245, 245, 240, 255)
 ACCENT = (46, 107, 255, 255)
 STROKE = (0, 0, 0, 255)
