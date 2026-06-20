@@ -65,11 +65,6 @@ bash "$(skill verify-completeness)" "$segments" "$transcript" "$dir/segments.com
   && mv -f "$dir/segments.complete.json" "$segments" \
   || echo "shorts: verify-completeness failed — spans unchanged" >&2
 
-# 7c. pick-title-styles (one batched call; best-effort, defaults to slam) ---
-step "pick-title-styles"
-bash "$(skill pick-title-styles)" "$segments" "$transcript" "$segments" >/dev/null \
-  || echo "shorts: pick-title-styles failed — spans default to slam" >&2
-
 count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["shorts"]))' "$segments")"
 echo "shorts: $count surviving span(s) after coherence check" >&2
 [[ "$count" -gt 0 ]] || die "no spans survived verify-coherence"
@@ -208,10 +203,9 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     title="$(cat "$title_file")"
     echo "    title: $title" >&2
 
-    # style assigned by pick-title-styles; absent -> slam
-    style="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1]))["shorts"][int(sys.argv[2])]; print(s.get("title_style") or "slam")' "$segments" "$i")"
+    # one channel title animation (glitch) on every short
     titled="$dir/clip_$idx.titled.mp4"
-    bash "$(skill title-transition)" "$sub" "$title" "$titled" "$style" >/dev/null
+    bash "$(skill title-transition)" "$sub" "$title" "$titled" >/dev/null
 
     # source-credit: persistent "Original video: <title>" top chyron
     credited="$dir/clip_$idx.credited.mp4"
@@ -242,6 +236,11 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
     ended="$dir/clip_$idx.ended.mp4"
     bash "$(skill end-card)" "$final" "$ended" >/dev/null || cp "$final" "$ended"
     final="$ended"
+
+    # speed-up: final global retime (SPEED=1.25x) — the last edit step
+    sped="$dir/clip_$idx.sped.mp4"
+    bash "$(skill speed-up)" "$final" "$sped" >/dev/null || cp "$final" "$sped"
+    final="$sped"
 
     verdict="$(bash "$(skill qc-clip)" "$final")"
     ok="$(printf '%s' "$verdict" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pass"])')"

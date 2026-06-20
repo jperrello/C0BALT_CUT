@@ -332,18 +332,12 @@ bash "$(skill verify-coherence)" "$seg_raw" "$tx" "$seg_coh" "$dmin" --pane "$an
 
 # bookend-trim was moved to phase 2 per spec; coherent spans become segments.json
 # directly as the per-span input. Each editor pane will re-snap its own span.
-# Only refresh when coherence actually re-ran — an unconditional cp would wipe
-# pick-title-styles' fields on every resume and force a redundant re-pick.
 if [[ ! -f "$seg_final" || "$seg_coh" -nt "$seg_final" ]]; then
   cp "$seg_coh" "$seg_final"
 fi
 
-# pick-title-styles: ONE batched call assigns a title-card style per span
-# (fit first, variety as tiebreak). Best-effort: on failure spans default to
-# slam at title-transition time.
-log "[phase 1 / analysis] pick-title-styles"
-bash "$(skill pick-title-styles)" "$seg_final" "$tx" "$seg_final" --pane "$an" \
-  || log "[phase 1 / analysis] pick-title-styles failed — spans default to slam"
+# Every short uses the single channel title animation (glitch) — there is no
+# per-span style pick anymore.
 count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["shorts"]))' "$seg_final")"
 log "[phase 1] $count span(s) survived coherence check"
 [[ "$count" -gt 0 ]] || { log "FATAL: no spans survived"; exit 4; }
@@ -412,7 +406,6 @@ json.dump({
     "topic": s.get("topic", ""),
     "rationale": s.get("rationale", ""),
     "title_suggestion": s.get("title_suggestion", ""),
-    "title_style": s.get("title_style", "slam"),
 }, open(sys.argv[3], "w"), indent=2)' "$seg_final" "$i" "$title_ctx" || true
 
   log "[phase 2 / span $idx] editor pane $ed  range=[$t0 .. $t1]"
@@ -650,16 +643,10 @@ run_phase3_captions() {
   local title; title="$(cat "$title_file")"
   log "[phase 3 / span $idx / captions] title=\"$title\""
 
-  # style assigned by pick-title-styles, carried in the title-context sidecar;
-  # absent (pre-feature resume) -> slam.
-  local style
-  style="$(python3 -c '
-import json, sys
-try: print(json.load(open(sys.argv[1])).get("title_style") or "slam")
-except Exception: print("slam")' "$title_ctx")"
-  log "[phase 3 / span $idx / captions] title-transition (style=$style)"
+  # one channel title animation (glitch) on every short — no per-span style.
+  log "[phase 3 / span $idx / captions] title-transition"
   local titled="$dir/clip_${idx}.titled.mp4"
-  bash "$(skill title-transition)" "$sfxed" "$title" "$titled" "$style" >/dev/null || {
+  bash "$(skill title-transition)" "$sfxed" "$title" "$titled" >/dev/null || {
     log "[phase 3 / span $idx / captions] title-transition FAILED"
     echo "title-transition" > "$dir/clip_${idx}.fail.captions"; return 1
   }
@@ -718,6 +705,13 @@ run_phase4() {
   local ended="$dir/clip_${idx}.ended.mp4"
   bash "$(skill end-card)" "$final" "$ended" >/dev/null || cp "$final" "$ended"
   final="$ended"
+
+  # speed-up: final global retime (SPEED=1.25x) — the last edit step. Keeps every
+  # relative beat in sync; qc/cadence/save below run on the delivered clip.
+  log "[phase 4 / span $idx] speed-up"
+  local sped="$dir/clip_${idx}.sped.mp4"
+  bash "$(skill speed-up)" "$final" "$sped" >/dev/null || cp "$final" "$sped"
+  final="$sped"
 
   log "[phase 4 / span $idx] qc-clip"
   local verdict; verdict="$(bash "$(skill qc-clip)" "$final")"

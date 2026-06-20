@@ -1,6 +1,6 @@
 ---
 name: title-transition
-description: Animate the title as a COLD OPEN in the TOP banner over the live opening footage — no blocking center card, no SFX — held until TITLE_SWAP (default 2.0s) so brand-overlays can hand off to the source citation in the same slot. Frame 1 stays content (a face mid-sentence) to protect the swipe-rate / "Stayed to Watch" signal. Five styles matched to clip register — slam (hype), typewriter (true crime), glitch (tech), bounce (comedy), cinematic (documentary) — each a PIL frame sequence anchored at TITLE_ANCHOR_FRAC (default 0.135). Style comes from pick-title-styles' per-span title_style (default slam).
+description: Animate the title as a COLD OPEN in the TOP banner over the live opening footage — no blocking center card — held until TITLE_SWAP (default 2.0s) so brand-overlays can hand off to the source citation in the same slot. Frame 1 stays content (a face mid-sentence) to protect the swipe-rate / "Stayed to Watch" signal. ONE animation for every short — the glitch style (RGB-split banner + scanline tear, style-matched zap/crackle SFX) — a PIL frame sequence anchored at TITLE_ANCHOR_FRAC (default 0.135).
 allowed-tools: Bash
 user-invocable: true
 ---
@@ -10,15 +10,16 @@ user-invocable: true
 Animated COLD-OPEN title for a short. The title animates in the TOP banner zone
 OVER the live opening footage — never a blocking center card — so frame 1 stays
 content (a face mid-sentence), protecting the swipe-rate / "Stayed to Watch"
-signal. The style is chosen per span by `pick-title-styles`; the title text
-comes from `generate-title` (third-person, ≤7 words, ALL CAPS). The title holds
+signal. Every short uses the SAME animation — the `glitch` style — so there is no
+per-span style pick; the title text comes from `generate-title` (third-person,
+≤7 words, ALL CAPS). The title holds
 until `TITLE_SWAP` and clears via its own fade-out, then `brand-overlays` fades
 the source citation into the same top slot (see that skill).
 
 ## Invoke
 
 ```
-.claude/skills/title-transition/title-transition.sh <input> <title> <out> [style=slam] [dur=auto]
+.claude/skills/title-transition/title-transition.sh <input> <title> <out> [ignored] [dur=auto]
 ```
 
 - `input`: video path (designed for finished 9:16 shorts)

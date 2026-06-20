@@ -10,25 +10,23 @@ set -euo pipefail
 input="${1:-}"
 title="${2:-}"
 out="${3:-}"
-style="${4:-slam}"
+# only one title animation now — glitch — applied to every short. the 4th arg is
+# accepted for back-compat but ignored.
+style="glitch"
 dur="${5:-auto}"
 
 # the title clears at TITLE_SWAP (shared with brand-overlays, which fades the
-# citation in at the same second) and animates in the top-banner zone.
-swap="${TITLE_SWAP:-2.0}"
+# citation in at the same second) and animates in the top-banner zone. Default
+# 2.5s so that after the final speed-up step (SPEED=1.25x) the title still holds
+# ~2.0s on screen (2.5 / 1.25).
+swap="${TITLE_SWAP:-2.5}"
 anchor="${TITLE_ANCHOR_FRAC:-0.135}"
 
 if [[ -z "$input" || -z "$title" || -z "$out" ]]; then
-  echo "usage: title-transition.sh <input> <title> <out> [style=slam] [dur=auto]" >&2
-  echo "styles: slam typewriter glitch bounce cinematic" >&2
+  echo "usage: title-transition.sh <input> <title> <out> [ignored] [dur=auto]" >&2
   exit 2
 fi
 [[ -f "$input" ]] || { echo "title-transition: input not found: $input" >&2; exit 2; }
-
-case "$style" in
-  slam|typewriter|glitch|bounce|cinematic) ;;
-  *) echo "title-transition: unknown style '$style' — using slam" >&2; style=slam ;;
-esac
 
 # the title's full lifecycle (animate in, hold, fade out) fits inside the hold
 # window so it has fully cleared the top banner by TITLE_SWAP.
