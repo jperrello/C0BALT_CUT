@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
-import json, sys
+import json, os, sys
 
 tx_path = sys.argv[1]
 gap_max = float(sys.argv[2])
 sentence_beat = float(sys.argv[3])
 collapse_to = float(sys.argv[4])
+# whisper overshoots the final word's t1 into trailing silence/room-tone; if the clip's
+# last shot is a low-motion cutaway that becomes a held/frozen frame, the short reads as
+# "ends then hangs". Clamp the final word's tail so the clip lands on the spoken payoff.
+max_tail = float(os.environ.get("TIGHTEN_MAX_TAIL", "0.6"))
 
 tx = json.load(open(tx_path))
 words = tx.get("words", [])
+
+if words:
+    last = words[-1]
+    capped = min(last["t1"], last["t0"] + max_tail)
+    if capped < last["t1"]:
+        last["t1"] = round(capped, 3)
 
 if len(words) < 2:
     json.dump({"keeps": [[words[0]["t0"], words[-1]["t1"]]] if words else [],
