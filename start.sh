@@ -617,6 +617,20 @@ run_phase3_captions() {
   local brolled="$dir/clip_${idx}.broll.mp4"
   bash "$(skill broll-composite)" "$zoomed" "$broll_plan" "$brolled" >/dev/null || cp "$zoomed" "$brolled"
 
+  # fix-cold-open (PREVENTIVE): proxy-grade the pre-caption clip, then repair the
+  # cold open if a route fires (truncate a cold-open b-roll cutaway / re-punch a
+  # face-withheld shot0) so frame 1 is the speaker — the front swipe-gate fix.
+  # NON-FATAL: passthrough when nothing to fix; captions then burn on the fix.
+  # FIX_COLD_OPEN=0 skips the whole pass.
+  if [[ "${FIX_COLD_OPEN:-1}" != "0" ]]; then
+    GRADE_SKIP_CLAUDE=1 bash "$(skill grade-clip)" "$brolled" >/dev/null 2>&1 || true
+    local fcg="${brolled%.*}.grade.json"
+    if [[ -f "$fcg" ]]; then
+      FIXCO_MODE=preventive bash "$(skill fix-cold-open)" "$brolled" "$fcg" >/dev/null 2>&1 || true
+      [[ -f "$dir/clip_${idx}.fixed.mp4" ]] && { brolled="$dir/clip_${idx}.fixed.mp4"; log "[phase 3 / span $idx / captions] fix-cold-open repaired the open"; }
+    fi
+  fi
+
   log "[phase 3 / span $idx / captions] burn-subtitles"
   local sub="$dir/clip_${idx}.sub.mp4"
   bash "$(skill burn-subtitles)" "$brolled" "$chunks" "$sub" chunks >/dev/null || {
@@ -748,6 +762,25 @@ run_phase4() {
     return 1
   }
   printf '%s\n' "$short_name" > "$dir/clip_${idx}.done.completion"
+
+  # grade-clip: NON-FATAL upload-readiness grade off the DELIVERED clip + its
+  # co-located work-dir sidecars (fillplan/chunks/broll/verify/cadence). Grades the
+  # work final (rich signals) then mirrors the grade.json next to the saved output
+  # clip so --backlog / fix-cold-open / schedule-drip find it in output/. Never
+  # blocks the save. GRADE_CLIP=0 disables; proxy-only in-chain (GRADE_SKIP_CLAUDE=1).
+  if [[ "${GRADE_CLIP:-1}" != "0" ]]; then
+    GRADE_SKIP_CLAUDE="${GRADE_SKIP_CLAUDE:-1}" \
+      bash "$(skill grade-clip)" "$final" >/dev/null 2>&1 || true
+    local wgrade="${final%.*}.grade.json"
+    if [[ -f "$wgrade" ]]; then
+      python3 -c 'import json,sys
+d=json.load(open(sys.argv[1])); d["clip"]=sys.argv[2]; d["source"]=sys.argv[3]
+json.dump(d, open(sys.argv[4],"w"), indent=2)' \
+        "$wgrade" "$out_dir/$short_name" "$slug" "$out_dir/${short_name%.mp4}.grade.json" 2>/dev/null || true
+      local gr; gr="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(str(d.get("grade","?"))+"/"+str(d.get("tier","?"))+" caps="+(",".join(d.get("hard_caps") or ["none"])))' "$wgrade" 2>/dev/null || true)"
+      [[ -n "$gr" ]] && log "[phase 4 / span $idx] grade-clip $gr"
+    fi
+  fi
   return 0
 }
 
@@ -820,6 +853,16 @@ shopt -u nullglob
 if [[ ${#broll_plans[@]} -gt 0 ]]; then
   log "[cleanup] broll-cleanup (${#broll_plans[@]} plan(s))"
   bash "$(skill broll-cleanup)" "${broll_plans[@]}" >/dev/null 2>&1 || true
+fi
+
+# ---- schedule-drip --------------------------------------------------------
+# Runs ONCE at end of run: deterministic greedy scheduler over every graded clip
+# in output/. Stages a daily drip into output/_toupload/<date>/ (clip copy +
+# metadata.txt) + schedule.json with gap_warnings — the dark-gap / feed-fatigue
+# fix. STAGING-HANDOFF ONLY (no upload). Non-fatal, idempotent. SCHEDULE_DRIP=0 skips.
+if [[ "${SCHEDULE_DRIP:-1}" != "0" ]]; then
+  log "[drip] schedule-drip"
+  bash "$(skill schedule-drip)" "${OUTPUT_DIR:-output}" >/dev/null 2>&1 || true
 fi
 
 # ---- final summary --------------------------------------------------------

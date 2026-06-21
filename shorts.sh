@@ -276,5 +276,12 @@ if [[ ${#plans[@]} -gt 0 ]]; then
   bash "$(skill broll-cleanup)" "${plans[@]}" >/dev/null 2>&1 || true
 fi
 
+# schedule-drip: ONCE at end of run — greedy daily-drip scheduler over output/.
+# STAGING-HANDOFF ONLY (no upload). Non-fatal, idempotent. SCHEDULE_DRIP=0 skips.
+if [[ "${SCHEDULE_DRIP:-1}" != "0" ]]; then
+  step "schedule-drip"
+  bash "$(skill schedule-drip)" "${OUTPUT_DIR:-output}" >/dev/null 2>&1 || true
+fi
+
 echo
 echo "shorts: done — $saved/$count short(s) saved under ./output/ ($skipped dropped by verify-bookends)" >&2

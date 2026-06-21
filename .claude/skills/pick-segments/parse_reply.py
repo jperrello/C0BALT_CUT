@@ -7,6 +7,9 @@ topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
 heatmap_path = sys.argv[7] if len(sys.argv) > 7 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
 
+# seconds the turn/payoff is allowed to take before we start penalizing.
+PAYOFF_BUDGET = float(__import__("os").environ.get("PAYOFF_BUDGET_SEC", "3.0"))
+
 heat = []
 if heatmap_path:
     try:
@@ -115,6 +118,56 @@ def norm_cuts(sh):
     return [[round(a, 2), round(b, 2)] for a, b in merged]
 
 
+# Open-loop hooks (a question/provocation opens a curiosity gap a stranger needs
+# filled) out-rank a flat claim at equal sub-scores — up to a few rank points.
+OPENLOOP = {"question": 4.0, "provocation": 3.0, "claim": 0.0}
+
+
+def score99(item):
+    # Explicit 0-99 upload-readiness rank, recomputed deterministically from the
+    # sub-scores so the formula — not Claude's holistic guess — drives selection.
+    #
+    # base 0-85: weighted blend of the four 0-10 sub-scores. structure (the
+    # complete arc) and hook<->payoff coherence (the hook actually lands, vs bait)
+    # weigh heaviest, then cold-open hook, then standalone context.
+    #   structure 2.6 + coherence 2.6 + hook 1.8 + context 1.5 = 8.5 -> *10 = 85 max
+    base = (item["structure_score"] * 2.6
+            + item["hook_payoff_coherence"] * 2.6
+            + item["hook_score"] * 1.8
+            + item["context_score"] * 1.5)
+    # time-to-first-payoff penalty: subtract proportional to how far past the
+    # budget the turn lands. ~2.2 rank pts per second late, capped so a single
+    # term can't sink an otherwise strong arc below the floor.
+    penalty = min(20.0, max(0.0, item["payoff_offset_sec"] - PAYOFF_BUDGET) * 2.2)
+    # open-loop bonus: question/provocation hooks create the curiosity gap that
+    # stops a scroll; reward them over a flat claim.
+    openloop = OPENLOOP.get(item["hook_type"], 0.0)
+    s = base - penalty + openloop
+    return max(0.0, min(99.0, s))
+
+
+def nudge_t0(cuts, offset):
+    # When the payoff lands well past the budget and the pre-turn material is
+    # pure setup, nudge the FIRST cut's start forward toward the turn line so the
+    # delivered open lands closer to the payoff. Conservative: never crosses the
+    # turn, never trims more than the overshoot, never drops total cut duration
+    # below dmin, and only fires on single-window leads (multi-cut spans already
+    # assemble a deliberate Q->A and must not be re-cut here).
+    if offset <= PAYOFF_BUDGET + 1.0:
+        return cuts, 0.0
+    a0, b0 = cuts[0]
+    total = sum(b - a for a, b in cuts)
+    room = total - dmin                 # how much we may shave and stay >= dmin
+    if room <= 0.5:
+        return cuts, 0.0
+    # leave PAYOFF_BUDGET of runway before the turn; never past the turn itself.
+    shift = min(offset - PAYOFF_BUDGET, room, (b0 - a0) - 0.5)
+    if shift <= 0.5:
+        return cuts, 0.0
+    out = [[round(a0 + shift, 2), b0]] + [list(c) for c in cuts[1:]]
+    return out, round(shift, 2)
+
+
 for sh in data.get("shorts", []):
     try:
         cuts = norm_cuts(sh)
@@ -139,6 +192,15 @@ for sh in data.get("shorts", []):
         print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (filler/fragment opening)", file=sys.stderr)
         continue
     seen.append((t0, t1))
+    span_len = sum(b - a for a, b in cuts)
+    offset = float(sh.get("payoff_offset_sec", 0) or 0)
+    offset = max(0.0, min(span_len, offset))   # clamp into the delivered window
+    # bias the open toward the turn line when the lead is pure setup.
+    cuts, shift = nudge_t0(cuts, offset)
+    if shift > 0:
+        t0 = cuts[0][0]
+        t1 = cuts[-1][1]
+        offset = max(0.0, offset - shift)      # turn is now that much closer to the open
     item = {
         "t0": round(t0, 2),
         "t1": round(t1, 2),
@@ -152,27 +214,30 @@ for sh in data.get("shorts", []):
         "hook_score": float(sh.get("hook_score", 0) or 0),
         "context_score": float(sh.get("context_score", 0) or 0),
         "structure_score": float(sh.get("structure_score", 0) or 0),
-        "overall_score": float(sh.get("overall_score", 0) or 0),
+        # NEW sub-scores surfaced for the grader/verifier downstream.
+        "hook_payoff_coherence": float(sh.get("hook_payoff_coherence", 0) or 0),
+        "payoff_offset_sec": round(offset, 2),
     }
     if tp is not None:
         item["topic"] = tp.get("title", "")
+    # explicit 0-99 rank from the sub-scores (replaces the old 0-10 passthrough).
+    item["overall_score"] = round(score99(item), 2)
     rq = replay_quotient(cuts)
     if rq is not None:
         # Replay is a weak tie-breaker. It often marks the memorable sentence
-        # inside a larger explanation, so it must not overpower Claude's arc
-        # judgment.
+        # inside a larger explanation, so it must not overpower the arc judgment.
+        # Rescaled to the 0-99 range (+0.4 -> +4.0) so it stays proportional.
         item["replay_quotient"] = round(rq, 2)
         item["overall_score"] = round(
-            item["overall_score"] + min(0.4, max(0.0, (rq - 1.0) * 0.4)), 2)
+            min(99.0, item["overall_score"] + min(4.0, max(0.0, (rq - 1.0) * 4.0))), 2)
     shorts.append(item)
 
 def rank_key(s):
-    # Cold-open hook is the #1 reference trait: bias selection toward
-    # question/provocation openings and away from weak hooks, layered on top of
-    # Claude's holistic overall_score. A near-gate, not a hard drop — a source
-    # with no question-y moments still yields its best arcs.
-    bonus = {"question": 0.6, "provocation": 0.45}.get(s.get("hook_type", "claim"), 0.0)
-    bonus += max(-0.8, min(0.3, (s.get("hook_score", 0.0) - 6.0) * 0.15))
+    # Tie-breaker layered on the 0-99 overall_score. The open-loop up-weight and
+    # the time-to-payoff penalty already live INSIDE overall_score (score99), so
+    # this only adds a small residual hook-strength nudge — scaled to the 0-99
+    # range (~x10 the old 0-10 weights) so it stays a near-gate, not a re-rank.
+    bonus = max(-8.0, min(3.0, (s.get("hook_score", 0.0) - 6.0) * 1.5))
     return s["overall_score"] + bonus
 
 shorts.sort(key=lambda s: -rank_key(s))

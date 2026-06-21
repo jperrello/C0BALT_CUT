@@ -22,7 +22,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 meta="$out_json.vbmeta"
 in_mtime="$(stat -f %m "$in_clip" 2>/dev/null || stat -c %Y "$in_clip")"
 tx_mtime="$(stat -f %m "$in_tx"   2>/dev/null || stat -c %Y "$in_tx")"
-sig="$in_mtime|$tx_mtime|v3"
+sig="$in_mtime|$tx_mtime|v4-ctxgate"
 
 if [[ -f "$out_json" && -f "$meta" && "$(cat "$meta")" == "$sig" ]]; then
   echo "verify-bookends: cache hit at $out_json" >&2
@@ -33,14 +33,14 @@ mkdir -p "$(dirname "$out_json")"
 
 # Disable switch
 if [[ "${VERIFY_BOOKENDS:-1}" == "0" ]]; then
-  echo '{"action":"keep","reason":"disabled via VERIFY_BOOKENDS=0"}' > "$out_json"
+  echo '{"action":"keep","reason":"disabled via VERIFY_BOOKENDS=0","context_pass":true,"first_payoff_offset":null}' > "$out_json"
   printf '%s' "$sig" > "$meta"
   cat "$out_json"; exit 0
 fi
 
 dur="$(ffprobe -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 "$in_clip")"
 if [[ -z "$dur" ]] || ! python3 -c "import sys; sys.exit(0 if float('$dur')>0 else 1)" 2>/dev/null; then
-  echo '{"action":"keep","reason":"could not read duration"}' > "$out_json"
+  echo '{"action":"keep","reason":"could not read duration","context_pass":true,"first_payoff_offset":null}' > "$out_json"
   printf '%s' "$sig" > "$meta"
   cat "$out_json"; exit 0
 fi
@@ -118,6 +118,21 @@ if bad_open and first is not None:
             break
         prev = w["t1"]
 
+# Cold-viewer context gate: the FIRST DELIVERED SENTENCE must stand alone for a
+# stranger. Surface the opening few seconds of words + the early sentence-start
+# boundaries (first word after a >=0.30s pause) so Claude can pick a clean
+# context_snap_t0 within the payoff budget. payoff_budget is the hard
+# time-to-first-payoff window (default 3.0s) parse_reply uses to bound the snap.
+PAYOFF_BUDGET = float(__import__("os").environ.get("VB_PAYOFF_BUDGET", "3.0"))
+budget_words = words_in(0.0, min(PAYOFF_BUDGET + 2.0, dur))
+context_starts = []
+prev = None
+for w in budget_words:
+    if prev is None or (w["t0"] - prev) >= 0.30:
+        if 0.0 < w["t0"] <= PAYOFF_BUDGET and (dur - w["t0"]) >= 15.0:
+            context_starts.append(round(w["t0"], 3))
+    prev = w["t1"]
+
 json.dump({
     "dur": dur,
     "head_t1": head_t1,
@@ -129,10 +144,14 @@ json.dump({
     "first_word": first_word,
     "bad_open": bad_open,
     "open_snap": open_snap,
+    "payoff_budget": PAYOFF_BUDGET,
+    "open_text": fmt(budget_words),
+    "context_starts": context_starts,
 }, sys.stdout)
 PY
 
 snip="$(cat "$tmp/snip.json")"
+PAYOFF_BUDGET_DISP="$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read())["payoff_budget"])' "$tmp/snip.json")"
 
 prompt_file="$tmp/prompt.txt"
 {
@@ -150,7 +169,10 @@ Allowed head boundaries (snap t0 to one of these): $(python3 -c 'import json,sys
 Allowed tail boundaries (snap t1 to one of these): $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read())["tail_boundaries"])' "$tmp/snip.json")
 First spoken word: $(python3 -c 'import json,sys; d=json.loads(open(sys.argv[1]).read()); print(repr(d.get("first_word","")), "(MID-SENTENCE FRAGMENT)" if d.get("bad_open") else "(ok)")' "$tmp/snip.json")
 
-You are checking FOUR things:
+Opening words (the first ~${PAYOFF_BUDGET_DISP}s of the delivered clip): $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read())["open_text"])' "$tmp/snip.json")
+Allowed context-snap boundaries (sentence starts within the payoff budget): $(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read())["context_starts"])' "$tmp/snip.json")
+
+You are checking FIVE things:
 
 (1) CLEANLINESS — opening and closing must be free of partial syllables,
     co-speaker interjections, breath cutoffs, and off-shot frames.
@@ -186,6 +208,34 @@ You are checking FOUR things:
     the first word that begins a clean, self-contained phrase, keeping the
     clip >= 15s. This is part of the swipe-away gate.
 
+(5) COLD-VIEWER CONTEXT — the FIRST DELIVERED SENTENCE must stand alone for
+    a complete stranger who knows nothing about the source. Set context_pass
+    to false if the opening sentence:
+      - opens on a DEPENDENT CLAUSE ("when you were making new builds...",
+        "which is why...", "after that happened...") with no main clause
+        yet spoken;
+      - uses a PRONOUN with no on-screen referent ("it was crazy", "they
+        told me", "that changed everything", "he said", "she did", "this
+        is the part") where "it/they/that/this/he/she" points at something
+        the viewer never saw;
+      - is a SENTENCE FRAGMENT (no subject+verb that completes a thought);
+      - is FLAT THROAT-CLEARING SETUP with no curiosity gap — a plain
+        statement of circumstance that promises nothing ("i've got dms on
+        instagram", "so we were just hanging out", "i woke up that day").
+    Also enforce a HARD TIME-TO-FIRST-PAYOFF budget of ~${PAYOFF_BUDGET_DISP}s:
+    report first_payoff_offset = seconds from the delivered open to where
+    the TURN/PAYOFF lands (the curiosity gap opens, a concrete claim/number/
+    question arrives). If the turn does NOT land within ~${PAYOFF_BUDGET_DISP}s
+    AND a stronger context-bearing line exists earlier within budget,
+    context_pass is false.
+    When context_pass is false, set context_snap_t0 to the START TIMESTAMP
+    (a word's t0 from the opening words above) of the next self-contained,
+    context-bearing sentence — prefer one of the allowed context-snap
+    boundaries, but ANY word-start works since tighten-pace has collapsed
+    the audio pauses. It MUST be STRICTLY within the payoff budget (never
+    past it, never past the hook). Leave context_snap_t0 null when it
+    passes or when no in-budget word-start fixes it.
+
 Decide:
 - "keep" — all three checks pass.
 - "trim" — propose INWARD-ONLY new t0 and/or t1 that snap to a word
@@ -197,15 +247,22 @@ Hard rules:
 - INWARD ONLY. t0 must be >= 0; t1 must be <= ${dur}.
 - Removing more than 2.0 seconds total is forbidden — if cleaning the
   bookends needs more than that, return "drop". Hook-weakness alone is
-  never a drop reason.
+  never a drop reason. Cold-context alone is never a drop reason either —
+  it only proposes a forward t0 snap.
 - Resulting duration (t1 - t0) must be >= 15 seconds, else return
   "keep" with reason.
+- context_snap_t0 must be <= ${PAYOFF_BUDGET_DISP} (the payoff budget) and
+  one of the allowed context-snap boundaries, or null.
+
+ALWAYS include context_pass (bool) and first_payoff_offset (seconds, or
+null if no discrete turn) on EVERY reply, alongside action. Include
+context_snap_t0 only when context_pass is false and a fix is in budget.
 
 Return ONLY one JSON object on a single line — no prose:
 
-  {"action":"keep","reason":"..."}
-  {"action":"trim","t0":<sec>,"t1":<sec>,"reason":"..."}
-  {"action":"drop","reason":"..."}
+  {"action":"keep","reason":"...","context_pass":true,"first_payoff_offset":2.1}
+  {"action":"trim","t0":<sec>,"t1":<sec>,"reason":"...","context_pass":false,"first_payoff_offset":3.4,"context_snap_t0":<sec>}
+  {"action":"drop","reason":"...","context_pass":true,"first_payoff_offset":null}
 
 EOF
 } > "$prompt_file"
@@ -221,71 +278,13 @@ fi
 reply_file="$tmp/reply.txt"
 run_claude_step verify-bookends "$prompt_file" "$reply_file" 2>"$tmp/claude.err" || {
   cat "$tmp/claude.err" >&2
-  echo '{"action":"keep","reason":"claude failed"}' > "$out_json"
+  echo '{"action":"keep","reason":"claude failed","context_pass":true,"first_payoff_offset":null}' > "$out_json"
   printf '%s' "$sig" > "$meta"
   cat "$out_json"; exit 0
 }
 
-# parse + validate
-python3 - "$reply_file" "$dur" "$out_json" "$tmp/snip.json" <<'PY'
-import json, re, sys
-reply = open(sys.argv[1]).read().strip()
-dur = float(sys.argv[2])
-out_path = sys.argv[3]
-
-m = re.search(r"\{.*\}", reply, re.DOTALL)
-if not m:
-    obj = {"action":"keep","reason":"no JSON in reply"}
-else:
-    try:
-        obj = json.loads(m.group(0))
-    except Exception:
-        obj = {"action":"keep","reason":"reply not parseable JSON"}
-
-act = obj.get("action", "keep")
-if act == "trim":
-    t0 = float(obj.get("t0", 0.0))
-    t1 = float(obj.get("t1", dur))
-    # INWARD-ONLY validation
-    if t0 < 0: t0 = 0.0
-    if t1 > dur: t1 = dur
-    if t1 <= t0:
-        obj = {"action":"keep","reason":"invalid t1<=t0"}
-    else:
-        removed = (t0 - 0.0) + (dur - t1)
-        new_dur = t1 - t0
-        if removed > 2.0:
-            obj = {"action":"drop","reason":f"trim would remove {removed:.2f}s (>2.0)"}
-        elif new_dur < 15.0:
-            obj = {"action":"keep","reason":f"would shrink below 15s (new_dur={new_dur:.2f})"}
-        else:
-            obj = {"action":"trim","t0":round(t0,3),"t1":round(t1,3),"reason":obj.get("reason","")}
-elif act == "drop":
-    obj = {"action":"drop","reason":obj.get("reason","")}
-else:
-    obj = {"action":"keep","reason":obj.get("reason","")}
-
-# Deterministic mid-sentence opener guard: force t0 forward off a fragment
-# opener even when Claude returned keep/short-trim (inward-only, <=2s removed,
-# >=15s left). Guarantees the swipe-away fix regardless of the vision verdict.
-try:
-    snip = json.load(open(sys.argv[4])) if len(sys.argv) > 4 else {}
-except Exception:
-    snip = {}
-osnap = snip.get("open_snap")
-if snip.get("bad_open") and isinstance(osnap, (int, float)) and osnap > 0 and obj.get("action") != "drop":
-    cur_t0 = float(obj["t0"]) if obj.get("action") == "trim" else 0.0
-    cur_t1 = float(obj["t1"]) if obj.get("action") == "trim" else dur
-    nt0 = max(cur_t0, float(osnap))
-    if nt0 > cur_t0 + 1e-3 and (nt0 + (dur - cur_t1)) <= 2.0 and (cur_t1 - nt0) >= 15.0:
-        r = obj.get("reason", "")
-        obj = {"action": "trim", "t0": round(nt0, 3), "t1": round(cur_t1, 3),
-               "reason": (r + " | fwd off mid-sentence opener").strip(" |")}
-
-with open(out_path, "w") as f:
-    json.dump(obj, f)
-print(json.dumps(obj))
-PY
+# parse + validate (standalone, unit-testable; folds context + fragment snaps)
+python3 "$here/parse_reply.py" "$reply_file" "$dur" "$out_json" "$tmp/snip.json"
 
 printf '%s' "$sig" > "$meta"
 cat "$out_json"

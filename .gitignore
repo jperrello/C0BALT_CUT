@@ -56,3 +56,6 @@ demos/title-styles/out/
 # local-only scratch (frame-grab references, one-off run helpers)
 reference_shorts/
 finish_phase4.sh
+
+# selection-suite run scaffolding (wiring notes, integrated into start.sh/CLAUDE.md)
+.wiring/
