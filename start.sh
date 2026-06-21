@@ -727,6 +727,25 @@ run_phase4() {
   bash "$(skill speed-up)" "$final" "$sped" >/dev/null || cp "$final" "$sped"
   final="$sped"
 
+  # director-pass: agentic vision QA/repair — a Claude "director" WATCHES the
+  # delivered clip and either ships it or applies bounded pixel-safe fixes
+  # (tail_trim via cut-clip / music_down via a bg-music re-mix) + surfaces the
+  # rest as an honest edit list. The expensive open-ended per-clip loop layered
+  # on top of grade-clip + fix-cold-open. Runs on the sped clip with all
+  # clip_NN.* sidecars co-located so qc/cadence/save/grade act on the repair.
+  # NON-FATAL; idempotent (.dpmeta); DIRECTOR_PASS=0 skips.
+  if [[ "${DIRECTOR_PASS:-1}" != "0" ]]; then
+    log "[phase 4 / span $idx] director-pass"
+    local dpreport="${final%.*}.director.json"
+    local dired="${final%.*}.dir.mp4"
+    bash "$(skill director-pass)" "$final" --pane "$cm" >/dev/null 2>&1 || true
+    if [[ -f "$dired" ]]; then
+      final="$dired"
+      local dv; dv="$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print(d.get("verdict",""),"applied="+",".join(a.get("op","") for a in d.get("applied",[])))' "$dpreport" 2>/dev/null || true)"
+      log "[phase 4 / span $idx] director-pass repaired the clip ($dv)"
+    fi
+  fi
+
   log "[phase 4 / span $idx] qc-clip"
   local verdict; verdict="$(bash "$(skill qc-clip)" "$final")"
   local ok; ok="$(printf '%s' "$verdict" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pass"])')"
