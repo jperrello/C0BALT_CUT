@@ -6,10 +6,27 @@
 import json, re, sys
 
 reply_path, segments_path, dmax = sys.argv[1:4]
+tx_path = sys.argv[4] if len(sys.argv) > 4 else None
 dmax = float(dmax)
 
 doc = json.load(open(segments_path))
 segs = doc.get("shorts", [])
+
+# Sentence-boundary ends from the source transcript: the t1 of every word whose
+# text ends in . ? or ! — the only points an outward nudge may land on, so the
+# clip never ends mid-sentence (the "maybe a billion," truncation bug).
+boundaries = []
+if tx_path:
+    try:
+        words = json.load(open(tx_path)).get("words", [])
+        boundaries = sorted(w["t1"] for w in words if str(w.get("w", "")).strip()[-1:] in ".?!")
+    except (OSError, ValueError, KeyError, TypeError):
+        boundaries = []
+
+def snap(end, target):
+    # Largest sentence boundary in (end, target]; None if no clean landing exists.
+    cands = [b for b in boundaries if end + 0.1 < b <= target + 0.5]
+    return max(cands) if cands else None
 
 text = open(reply_path).read()
 m = re.search(r"\{.*\}", text, re.S)
@@ -40,19 +57,23 @@ for i, s in enumerate(segs):
             nt1 = float(v.get("extend_t1"))
         except (TypeError, ValueError):
             nt1 = None
+        # Snap the requested landing DOWN to the last complete sentence at or
+        # before extend_t1 — never extend to a mid-sentence point (a partway
+        # nudge that ends mid-clause is strictly worse than a clean stop).
+        snapped = snap(end, nt1) if (nt1 is not None and boundaries) else nt1
         ok = (
-            nt1 is not None
-            and nt1 > end + 0.1                      # genuinely outward
-            and selected + (nt1 - end) <= dmax + 0.5  # stays within budget
+            snapped is not None
+            and snapped > end + 0.1                       # genuinely outward
+            and selected + (snapped - end) <= dmax + 0.5  # stays within budget
         )
         if ok:
-            cuts[-1][1] = round(nt1, 2)
+            cuts[-1][1] = round(snapped, 2)
             s["cuts"] = cuts
             s["t1"] = round(cuts[-1][1], 2)
-            s["completeness_note"] = f"Δt1=+{nt1 - end:.2f}; {s['completeness_note']}"
+            s["completeness_note"] = f"Δt1=+{snapped - end:.2f}; {s['completeness_note']}"
         else:
             s["completeness_verdict"] = "truncated"
-            s["completeness_note"] = f"extend rejected (budget/boundary); {s['completeness_note']}"
+            s["completeness_note"] = f"extend rejected (no clean landing within budget); {s['completeness_note']}"
     out.append(s)
 
 json.dump({"source": doc.get("source", ""), "shorts": out}, sys.stdout, indent=2)

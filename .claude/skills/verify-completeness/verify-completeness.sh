@@ -67,7 +67,7 @@ if ! run_claude_step verify-completeness "$tmp/prompt.txt" "$tmp/reply.txt" 2>"$
   echo "$out"; exit 0
 fi
 
-if ! python3 "$here/parse_reply.py" "$tmp/reply.txt" "$segs" "$dmax" > "$out" 2>"$tmp/parse.err"; then
+if ! python3 "$here/parse_reply.py" "$tmp/reply.txt" "$segs" "$dmax" "$tx" > "$out" 2>"$tmp/parse.err"; then
   echo "verify-completeness: parse failed; passthrough" >&2
   cat "$tmp/parse.err" >&2
   cp "$segs" "$out"
