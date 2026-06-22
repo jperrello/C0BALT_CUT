@@ -42,5 +42,15 @@ Boundaries are contiguous (`topics[i].t1 == topics[i+1].t0`). Together they cove
 ## Why not just include this in pick-segments
 Topic boundaries are reusable. Other consumers (chapter markers, retrieval, future skills) want the same partition. Keeping it separate also lets `pick-segments` cache-hit even when N or duration changes.
 
+## RLM-assisted path (long sources)
+On long sources (`RLM_TOPICS=1`, or auto when duration ≥ `RLM_TOPICS_MIN_SEC`=1500s) the
+single-prompt compression loses back-half detail, so it runs an rlm map-reduce instead:
+`build_rlm_prompt.py` chunks the FULL transcript on natural seams (with overlap), the
+orchestrator dispatches one `rlm-segment-subcall` (Sonnet) per chunk, verifies coverage,
+and synthesizes `topics.json` + `candidates.hint.json` (ranked by confidence, including
+cross-chunk THREAD candidates). Per-chunk results cache under `work/<id>/rlm/`. Falls back
+to the single-prompt path on any failure. **Full design + the adopted/rejected tactic
+ledger: [`RLM.md`](RLM.md).**
+
 ## Status
-Implemented. Tested on `work/<id>/transcript.json`.
+Implemented (single-prompt + rlm-assisted). Tested on `work/<id>/transcript.json`.

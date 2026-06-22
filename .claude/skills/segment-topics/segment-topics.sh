@@ -53,10 +53,27 @@ fi
 
 reply="$tmp/reply.txt"
 if [[ "$use_rlm" == "1" ]]; then
-  echo "segment-topics: rlm-assisted (duration ${duration}s, chunk ${RLM_TOPICS_CHUNK_SEC:-600}s)" >&2
-  python3 "$here/build_rlm_prompt.py" "$transcript" "$tmp/chunks" "${RLM_TOPICS_CHUNK_SEC:-600}" > "$tmp/prompt.txt"
+  # Chunks + per-chunk MAP cache + usage log live in work/<id>/rlm/ (stable, NOT
+  # the ephemeral tmp dir) so a re-run after a downstream param tweak can serve
+  # unchanged chunks from cache instead of re-MAPping them (shorts-bui).
+  rlm_dir="$(dirname "$out")/rlm"
+  echo "segment-topics: rlm-assisted (duration ${duration}s, chunk ${RLM_TOPICS_CHUNK_SEC:-600}s, model ${RLM_SUBCALL_MODEL:-sonnet})" >&2
+  python3 "$here/build_rlm_prompt.py" "$transcript" "$rlm_dir" "${RLM_TOPICS_CHUNK_SEC:-600}" > "$tmp/prompt.txt"
+  # surface the structure/usage log (chunks, cache hits, ~input tokens) — the
+  # data for tuning chunk size / batch / model tier (shorts-t9c).
+  if [[ -f "$rlm_dir/usage.json" ]]; then
+    python3 -c 'import json,sys
+try:
+    u=json.load(open(sys.argv[1]))
+    tok=sum(c.get("est_input_tokens",0) for c in u.get("chunks",[]))//1000
+    print("segment-topics: rlm %d chunks (%d cached, %d dispatch), ~%dk input tok, model %s, threads %s" % (
+        u["n_chunks"], u["n_cached"], u["n_dispatch"], tok, u["model"], u["threads"]), file=sys.stderr)
+except Exception:
+    pass' "$rlm_dir/usage.json" || true
+  fi
   if run_claude_step segment-topics-rlm "$tmp/prompt.txt" "$reply" 2>"$tmp/claude.err" \
      && python3 "$here/parse_reply.py" "$reply" "$transcript" > "$out" 2>"$tmp/parse.err"; then
+    cat "$tmp/parse.err" >&2 2>/dev/null || true   # surface coverage-gap warnings
     hint="$(dirname "$out")/candidates.hint.json"
     python3 "$here/parse_candidates.py" "$reply" "$transcript" > "$hint" 2>/dev/null \
       && echo "segment-topics: wrote candidate hints -> $hint" >&2 || true
@@ -75,6 +92,20 @@ run_claude_step segment-topics "$tmp/prompt.txt" "$reply" 2>"$tmp/claude.err" ||
   exit 1
 }
 
-python3 "$here/parse_reply.py" "$reply" "$transcript" > "$out"
+# Parse into a temp first so an unparseable reply can never zero an existing
+# topics.json; on parse failure fall back to one deterministic whole-video topic
+# instead of aborting the whole pipeline (set -e).
+if python3 "$here/parse_reply.py" "$reply" "$transcript" > "$tmp/topics.json" 2>"$tmp/parse.err"; then
+  mv "$tmp/topics.json" "$out"
+else
+  cat "$tmp/parse.err" >&2 2>/dev/null || true
+  echo "segment-topics: reply unparseable; writing one-topic fallback" >&2
+  python3 -c 'import json,sys
+tx=json.load(open(sys.argv[1])); segs=tx.get("segments") or []
+dur=round(segs[-1]["t1"],2) if segs else 0
+json.dump({"source":tx.get("source",""),
+           "topics":[{"t0":0.0,"t1":dur,"title":"Full video","summary":""}]},
+          open(sys.argv[2],"w"), indent=2)' "$transcript" "$out"
+fi
 echo "segment-topics: wrote $out" >&2
 echo "$out"

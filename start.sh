@@ -874,6 +874,21 @@ if [[ ${#broll_plans[@]} -gt 0 ]]; then
   bash "$(skill broll-cleanup)" "${broll_plans[@]}" >/dev/null 2>&1 || true
 fi
 
+# ---- sources-ledger -------------------------------------------------------
+# Record this source in work/sources.json (title, url, produced shorts + grades,
+# disk footprint, active|reaped status) + a keyed bd memory, so future sessions
+# know it's been clipped and reap-source can reclaim its heavy files later.
+# Memory half of the disk-hygiene pair; reap-source is the manual cleanup half.
+log "[ledger] sources-ledger record $id"
+bash "$(skill sources-ledger)" record "$id" >/dev/null 2>&1 || true
+
+# ---- selection-report -----------------------------------------------------
+# Write output/<slug>/_selection.json: the shipped shorts (scores + rationale)
+# alongside the considered-not-shipped RLM candidate menu + topics, so the other
+# arguments are visible next to the produced shorts. Deterministic, non-fatal.
+log "[report] selection-report"
+bash "$(skill selection-report)" "$dir" "$root/output" >/dev/null 2>&1 || true
+
 # ---- schedule-drip --------------------------------------------------------
 # Runs ONCE at end of run: deterministic greedy scheduler over every graded clip
 # in output/. Stages a daily drip into output/_toupload/<date>/ (clip copy +

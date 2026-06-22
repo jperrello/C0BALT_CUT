@@ -88,23 +88,48 @@ Use replay as a DISCOVERY HINT, not a decision rule. Replay peaks often mark the
 """
 
 # rlm candidate-moment hints (full-resolution per-chunk discovery) — surfaces
-# back-half arcs the compressed transcript view can miss. HINT only.
+# back-half arcs the compressed transcript view can miss. HINT only. Candidates
+# carry a confidence (0-1) so they're surfaced RANKED, not flat (shorts-7mk), and
+# may be cross-chunk THREAD stitches with their own cut plan (shorts-qw3/8la).
 hint_block = ""
 if hint_path:
     try:
         cands = json.load(open(hint_path)).get("candidates", [])
     except (FileNotFoundError, ValueError):
         cands = []
-    if cands:
+    simple = [c for c in cands if not c.get("thread")]
+    threads = [c for c in cands if c.get("thread")]
+    # already confidence-ranked upstream; keep that order, show the score.
+    if simple:
         rows = "\n".join(
-            f"  [{c['t0']:.1f}-{c['t1']:.1f}] {str(c.get('quote','')).strip()[:160]}"
-            for c in cands
+            f"  [conf {float(c.get('confidence', 0.5)):.2f}] [{c['t0']:.1f}-{c['t1']:.1f}] "
+            f"{str(c.get('quote','')).strip()[:160]}"
+            for c in simple
         )
-        hint_block = f"""
-CANDIDATE MOMENTS (rlm discovery hint — clip-worthy beats surfaced from a full-resolution per-chunk read; especially useful for the back half of long videos):
+        hint_block += f"""
+CANDIDATE MOMENTS (rlm discovery hint — clip-worthy beats surfaced from a full-resolution per-chunk read; especially useful for the back half of long videos; RANKED by confidence = how standalone the moment looked):
 {rows}
 
-Treat these as DISCOVERY HINTS only, exactly like the replay graph: they point you at moments worth examining, but YOUR standalone-arc judgment still decides. Expand any hint you use to a complete setup → turn → landing arc; never pick a bare quote because it appears here.
+Treat these as DISCOVERY HINTS only, exactly like the replay graph: higher confidence = a stronger lead, but YOUR standalone-arc judgment still decides. Expand any hint you use to a complete setup → turn → landing arc; never pick a bare quote because it appears here.
+"""
+    if threads:
+        trows = "\n".join(
+            "  [conf {:.2f}] [{}] cuts {} :: {}\n      bridge: {}".format(
+                float(c.get('confidence', 0.6)),
+                str(c.get('kind', 'setup_payoff')),
+                " + ".join(f"[{float(r[0]):.1f}-{float(r[1]):.1f}]"
+                           for r in (c.get('cuts') or [])
+                           if isinstance(r, (list, tuple)) and len(r) >= 2),
+                str(c.get('quote', '')).strip()[:140],
+                str(c.get('bridge', '')).strip()[:200],
+            )
+            for c in threads
+        )
+        hint_block += f"""
+CROSS-CHUNK THREADS (rlm discovery hint — a setup in one part of the video that pays off in a DISTANT part: setup→payoff, callback, escalation, or contradiction, stitched with non-contiguous cuts):
+{trows}
+
+A thread is the ONE case where a short MAY cross topic boundaries. If a thread above is genuinely compelling as a standalone story, you may pick it: provide its ordered cuts (≤3, source-chronological, summing to {dmin:.0f}-{dmax:.0f}s), set "thread": true, AND set "thread_kind" to that thread's kind (setup_payoff | callback | escalation | contradiction) so it bypasses the single-topic constraint. Only do this for a REAL narrative stitch the cuts make coherent — never to glue two loosely-related moments. Most picks are still single-topic; treat threads as rare, high-value exceptions.
 """
 
 if topics:
@@ -116,7 +141,7 @@ if topics:
 TOPIC BOUNDARIES (HARD CONSTRAINT):
 {topic_block}
 
-Each picked span MUST lie entirely within ONE topic — never straddle a boundary. A short that crosses topics reads as two unrelated clips spliced together; that is the failure mode we are explicitly preventing. If a topic is shorter than {dmin:.0f}s, skip it. You do not need to pick from every topic; pick the {n} strongest single-topic moments overall.
+Each picked span MUST lie entirely within ONE topic — never straddle a boundary. A short that crosses topics reads as two unrelated clips spliced together; that is the failure mode we are explicitly preventing. If a topic is shorter than {dmin:.0f}s, skip it. You do not need to pick from every topic; pick the {n} strongest single-topic moments overall. (The ONE exception is a deliberate cross-chunk THREAD from the threads hint below, marked "thread": true — see that block.)
 """
 else:
     topic_rules = ""
@@ -171,4 +196,4 @@ HARD REJECT — do NOT pick spans whose first transcript word is filler:
 Trim the span start forward to a stronger opening word if needed (still respect {dmin:.0f}s minimum).
 
 Reply with ONLY a JSON object (no prose, no code fences):
-{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "rationale": "<short reason>", "title_suggestion": "<short title>", "opening_line": "<verbatim first ~8-12 words>", "hook_type": "question|provocation|claim", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "hook_payoff_coherence": <0-10>, "payoff_offset_sec": <float, 0..span_len>, "overall_score": <0-10>}}]}}""")
+{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "thread": <true ONLY for a cross-chunk thread that crosses topics; omit/false otherwise>, "thread_kind": "<setup_payoff|callback|escalation|contradiction — only when thread:true>", "rationale": "<short reason>", "title_suggestion": "<short title>", "opening_line": "<verbatim first ~8-12 words>", "hook_type": "question|provocation|claim", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "hook_payoff_coherence": <0-10>, "payoff_offset_sec": <float, 0..span_len>, "overall_score": <0-10>}}]}}""")

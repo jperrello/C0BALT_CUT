@@ -184,8 +184,13 @@ for sh in data.get("shorts", []):
         continue
     if any(not (t1 <= a or t0 >= b) for a, b in seen):
         continue
+    # A cross-chunk THREAD span (shorts-8la) is the sanctioned exception to the
+    # single-topic rule: a deliberate setup->payoff/callback/contradiction stitch
+    # of >=2 non-contiguous cuts. It bypasses the topic-boundary drop here and —
+    # being multi-cut — already bypasses verify-coherence tightening downstream.
+    is_thread = bool(sh.get("thread")) and len(cuts) >= 2
     tp = topic_of(t0, t1) if topics else None
-    if topics and tp is None:
+    if topics and tp is None and not is_thread:
         print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (crosses topic boundary)", file=sys.stderr)
         continue
     if starts_with_filler(t0):
@@ -195,8 +200,9 @@ for sh in data.get("shorts", []):
     span_len = sum(b - a for a, b in cuts)
     offset = float(sh.get("payoff_offset_sec", 0) or 0)
     offset = max(0.0, min(span_len, offset))   # clamp into the delivered window
-    # bias the open toward the turn line when the lead is pure setup.
-    cuts, shift = nudge_t0(cuts, offset)
+    # bias the open toward the turn line when the lead is pure setup — but never
+    # re-cut a deliberate thread stitch (its cuts are intentional).
+    cuts, shift = ([list(c) for c in cuts], 0.0) if is_thread else nudge_t0(cuts, offset)
     if shift > 0:
         t0 = cuts[0][0]
         t1 = cuts[-1][1]
@@ -220,6 +226,11 @@ for sh in data.get("shorts", []):
     }
     if tp is not None:
         item["topic"] = tp.get("title", "")
+    if is_thread:
+        item["thread"] = True
+        k = str(sh.get("thread_kind", "") or sh.get("kind", "")).strip().lower()
+        item["thread_kind"] = k if k in ("setup_payoff", "callback", "escalation", "contradiction") else "setup_payoff"
+        item.setdefault("topic", f"thread:{item['thread_kind']}")
     # explicit 0-99 rank from the sub-scores (replaces the old 0-10 passthrough).
     item["overall_score"] = round(score99(item), 2)
     rq = replay_quotient(cuts)

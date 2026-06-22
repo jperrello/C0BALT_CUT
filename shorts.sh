@@ -276,6 +276,11 @@ if [[ ${#plans[@]} -gt 0 ]]; then
   bash "$(skill broll-cleanup)" "${plans[@]}" >/dev/null 2>&1 || true
 fi
 
+# selection-report: write output/<slug>/_selection.json — shipped shorts +
+# considered-not-shipped RLM candidates + topics. Deterministic, non-fatal.
+step "selection-report"
+bash "$(skill selection-report)" "$dir" "${OUTPUT_DIR:-$root/output}" >/dev/null 2>&1 || true
+
 # schedule-drip: ONCE at end of run — greedy daily-drip scheduler over output/.
 # STAGING-HANDOFF ONLY (no upload). Non-fatal, idempotent. SCHEDULE_DRIP=0 skips.
 if [[ "${SCHEDULE_DRIP:-1}" != "0" ]]; then

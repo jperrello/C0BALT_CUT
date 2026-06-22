@@ -4,11 +4,36 @@ import json, re, sys
 
 reply_path, transcript_path = sys.argv[1:3]
 text = open(reply_path).read()
-m = re.search(r"\{.*\}", text, re.S)
-if not m:
-    print(f"segment-topics: no JSON in reply: {text!r}", file=sys.stderr)
+
+def extract_json(s):
+    # The reduce reply may wrap its JSON in prose that itself contains braces, so a
+    # greedy {.*} can over-capture into invalid JSON. Try greedy first, then walk
+    # balanced top-level {...} candidates and return the first that parses.
+    m = re.search(r"\{.*\}", s, re.S)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except ValueError:
+            pass
+    depth = start = 0
+    for i, ch in enumerate(s):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth:
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(s[start:i + 1])
+                except ValueError:
+                    continue
+    return None
+
+data = extract_json(text)
+if not isinstance(data, dict):
+    print(f"segment-topics: no parseable JSON in reply: {text[:200]!r}", file=sys.stderr)
     sys.exit(1)
-data = json.loads(m.group(0))
 
 tx = json.load(open(transcript_path))
 segs = tx.get("segments") or []
@@ -20,7 +45,39 @@ def snap(t):
         return round(float(t), 2)
     return round(min(boundaries, key=lambda b: abs(b - t)), 2)
 
-raw = sorted(data.get("topics", []), key=lambda t: float(t["t0"]))
+# Coerce/skip malformed topic entries (a missing/non-numeric t0/t1, a non-dict, or
+# topics not even a list) instead of crashing — a single bad entry must not abort
+# the run; the contiguity loop + one-big-topic fallback below repair the rest.
+raw = []
+for t in (data.get("topics") if isinstance(data.get("topics"), list) else []):
+    if not isinstance(t, dict):
+        continue
+    try:
+        a, b = float(t["t0"]), float(t["t1"])
+    except (KeyError, TypeError, ValueError):
+        continue
+    raw.append({"t0": a, "t1": b, "title": t.get("title", ""), "summary": t.get("summary", "")})
+raw.sort(key=lambda t: t["t0"])
+
+# Coverage diagnostic (shorts-upk safety net): the orchestrator is asked to
+# verify each chunk's topics tile its window and re-dispatch gappy chunks, but
+# if a hole still slips through, warn here. The contiguity-forcing below repairs
+# the output either way; this only surfaces a likely lost MAP chunk for tuning.
+if raw and duration:
+    cover = max(0.0, min(duration, float(raw[0]["t0"])))  # leading gap
+    biggest = float(raw[0]["t0"])
+    prev = float(raw[0]["t1"])
+    for t in raw[1:]:
+        gap = float(t["t0"]) - prev
+        if gap > biggest:
+            biggest = gap
+        prev = max(prev, float(t["t1"]))
+    biggest = max(biggest, duration - prev)               # trailing gap
+    if biggest > max(120.0, duration * 0.05):
+        print(f"segment-topics: WARN coverage gap ~{biggest:.0f}s in topics "
+              f"(duration {duration:.0f}s) — a MAP chunk may have been lost",
+              file=sys.stderr)
+
 topics = []
 prev_end = 0.0
 for t in raw:
