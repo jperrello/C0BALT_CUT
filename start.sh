@@ -136,6 +136,8 @@ EOF
 esac
 
 # ---- resolve source-id vs URL --------------------------------------------
+# accept both a bare source-id and the documented work/<id> path form
+arg="${arg#work/}"; arg="${arg%/}"
 if [[ -d "work/$arg" && -f "work/$arg/source.mp4" ]]; then
   id="$arg"
   url=""
@@ -379,8 +381,12 @@ run_span() {
   # forever (shorts-8m6).
   rm -f "$dir/clip_${idx}.fail"
 
-  # resume guard: phase 2 already produced this span's vertical + path sidecars
-  if [[ -f "$dir/clip_${idx}.vert.mp4" && -f "$dir/clip_${idx}.vert.path" && -f "$dir/clip_${idx}.ctx.path" ]]; then
+  # resume guard: phase 2 already produced this span's vertical + path sidecars.
+  # Only honor it when vert.mp4 is NEWER than the segments file it derives from —
+  # a re-picked segments.json (new mtime) invalidates a stale vert.mp4 from a
+  # prior run whose span range differed (shorts-8m6).
+  if [[ -f "$dir/clip_${idx}.vert.mp4" && -f "$dir/clip_${idx}.vert.path" \
+        && -f "$dir/clip_${idx}.ctx.path" && "$dir/clip_${idx}.vert.mp4" -nt "$seg_final" ]]; then
     log "[phase 2 / span $idx] cached (vert.mp4 + paths present) — skipping"
     return 0
   fi
@@ -552,8 +558,11 @@ run_phase3_captions() {
 
   rm -f "$dir/clip_${idx}.fail.captions"
 
-  # resume guard: phase 3 already leveled this span
-  if [[ -f "$dir/clip_${idx}.leveled.mp4" && -f "$dir/clip_${idx}.leveled.path" ]]; then
+  # resume guard: phase 3 already leveled this span. Only honor it when the
+  # leveled output is NEWER than phase 2's vert.mp4 — a re-run phase 2 invalidates
+  # a stale leveled.mp4 from a prior span (shorts-8m6).
+  if [[ -f "$dir/clip_${idx}.leveled.mp4" && -f "$dir/clip_${idx}.leveled.path" \
+        && "$dir/clip_${idx}.leveled.mp4" -nt "$dir/clip_${idx}.vert.mp4" ]]; then
     log "[phase 3 / span $idx] cached (leveled.mp4 present) — skipping"
     return 0
   fi
@@ -692,10 +701,18 @@ run_phase4() {
 
   rm -f "$dir/clip_${idx}.fail.completion"
 
-  # resume guard: phase 4 already saved this span
+  # resume guard: phase 4 already saved this span — but only honor the marker if
+  # the short it names still exists on disk. A stale marker from a prior run whose
+  # output was reaped/removed must NOT swallow the completion phase (shorts-8m6).
   if [[ -f "$dir/clip_${idx}.done.completion" ]]; then
-    log "[phase 4 / span $idx] cached (already saved) — skipping"
-    return 0
+    local saved; saved="$(head -1 "$dir/clip_${idx}.done.completion" 2>/dev/null)"
+    if [[ -n "$saved" && -e "$out_dir/$saved" \
+          && "$dir/clip_${idx}.done.completion" -nt "$dir/clip_${idx}.leveled.mp4" ]]; then
+      log "[phase 4 / span $idx] cached (already saved) — skipping"
+      return 0
+    fi
+    log "[phase 4 / span $idx] stale completion marker ($saved) — re-running"
+    rm -f "$dir/clip_${idx}.done.completion"
   fi
 
   pane_ready "$cm"

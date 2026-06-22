@@ -85,6 +85,6 @@ run_claude_step pick-segments "$prompt_file" "$reply" 2>"$tmp/claude.err" || {
   exit 1
 }
 
-python3 "$here/parse_reply.py" "$reply" "$n" "$dmin" "$dmax" "$transcript" "${topics:-}" "${heatmap:-}" > "$out"
+python3 "$here/parse_reply.py" "$reply" "$n" "$dmin" "$dmax" "$transcript" "${topics:-}" "${heatmap:-}" "${hint:-}" > "$out"
 echo "pick-segments: wrote $out" >&2
 echo "$out"

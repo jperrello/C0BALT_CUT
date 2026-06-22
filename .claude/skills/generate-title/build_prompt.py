@@ -147,6 +147,36 @@ Pick the framing that conveys the clip's point most clearly to a
 stranger. When in doubt, prefer the framing that states the most of the
 message — under-explaining loses more viewers than mild spoiling.
 
+## Step 2.5 — translate jargon into a human stake
+
+Experts speak in abstractions; titles that travel speak in consequences.
+If the clip's core is a technical, academic, or abstract concept, DO NOT
+put the jargon in the title as the hook — name what it MEANS for a human.
+Frame the concept through one of these stakes, whichever the clip actually
+supports:
+
+  YOU (the viewer's body, life, death, future) · DEATH · THE UNIVERSE ·
+  REALITY ITSELF · TIME · a FAMOUS NAME (Einstein, ...) · ALIENS
+
+  Concept the speaker uses          →  Human stake to title
+  the holographic principle         →  THE UNIVERSE MIGHT BE A HOLOGRAM
+  Hawking radiation                 →  WHY BLACK HOLES GLOW
+  information is preserved           →  NOTHING IN THE UNIVERSE TRULY DISAPPEARS
+  the many-worlds interpretation     →  INFINITE VERSIONS OF YOU EXIST
+  entropy drives complexity          →  YOU ARE LITERALLY SURFING ENTROPY
+  the singularity is a moment of time→  A BLACK HOLE'S CENTER IS YOUR FUTURE
+  the equation predicted black holes →  EINSTEIN DIDN'T KNOW WHAT HIS EQUATION KNEW
+  science is value-neutral           →  SCIENCE WILL HELP EVIL PEOPLE TOO
+
+The rule: keep the SUBJECT concrete and named (entropy, black holes,
+Einstein — those are the referents that pass the cold-viewer test) but
+frame it through the human consequence, not the textbook term. Prefer
+EXPERIENTIAL phrasing ("YOU AGE SLOWER") over EXPOSITORY ("TIME DILATION
+EXPLAINED"); prefer CONFLICT/CONTRADICTION wording ("EINSTEIN WAS WRONG
+ABOUT HIS OWN THEORY") over a flat restatement. This never overrides the
+defensibility or message tests — translate the clip's real point, never
+inflate a claim it does not make.
+
 ## Step 3 — if no clear payoff exists
 
 If the clip is continuous info with no discrete climax, or the
@@ -157,8 +187,14 @@ return empty.
 
 ## Hard rules
 
-- THIRD PERSON ONLY. No "I", "me", "my", "we", "us", "our", "you",
-  "your". Chyron voice.
+- NO FIRST-PERSON SPEAKER VOICE. No "I", "me", "my", "we", "us", "our".
+  The title is a chyron, not the speaker talking. Second-person "YOU" /
+  "YOUR" addressed to the VIEWER is allowed and encouraged when it names
+  the human stake (Step 2.5) — "YOU ARE SURFING ENTROPY", "WHY YOU AGE
+  SLOWER ON A PLANE" both work — but it must still pass the cold-viewer
+  and message tests: a "YOU" with no concrete referent is banned ("WHY
+  YOUR BRAIN DOES THIS" fails — no referent; "WHY YOUR BRAIN IGNORES
+  GORILLAS" works).
 - NO PRONOUNS STANDING IN FOR A PERSON. The title may not use "HE",
   "HIM", "HIS", "SHE", "HER", "HERS", "THEY", "THEM", "THEIR" as the
   ONLY reference to a person. Every person must be a PROPER NAME,

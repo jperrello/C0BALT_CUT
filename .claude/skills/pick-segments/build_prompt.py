@@ -110,7 +110,11 @@ if hint_path:
 CANDIDATE MOMENTS (rlm discovery hint — clip-worthy beats surfaced from a full-resolution per-chunk read; especially useful for the back half of long videos; RANKED by confidence = how standalone the moment looked):
 {rows}
 
-Treat these as DISCOVERY HINTS only, exactly like the replay graph: higher confidence = a stronger lead, but YOUR standalone-arc judgment still decides. Expand any hint you use to a complete setup → turn → landing arc; never pick a bare quote because it appears here.
+Treat these as DISCOVERY HINTS, but weight confidence heavily: it is a second reader's estimate, from the full-resolution transcript, of how strong each moment is as a standalone short. Higher confidence = a stronger lead.
+
+NEAR-MANDATORY: every candidate at confidence >= 0.85 is among the strongest standalone moments in the entire source — the discovery pass is telling you these are the bangers. Build a complete setup → turn → landing arc around EACH of them (expand the bare quote; use QUESTION-LEAD ASSEMBLY when its natural open is slow) and INCLUDE all of them among your {n} picks. Drop a >= 0.85 candidate only if a genuinely STRONGER moment in the same topic crowds it out, or it truly cannot stand alone for a cold viewer — never merely because a different topic caught your eye first. A high-confidence candidate you silently skip is a missed clip, not a judgment call. (A deterministic backfill will re-inject any >= 0.85 candidate you omit, so it is better to assemble a proper arc here than to leave it to the fallback.)
+
+Never pick a bare quote because it appears here — always expand it to a full arc.
 """
     if threads:
         trows = "\n".join(

@@ -131,14 +131,19 @@ def letterbox(img):
     h, w = g.shape
     bh = max(2, int(h * 0.06))
     bw = max(2, int(w * 0.06))
-    bands = [g[:bh, :], g[h - bh:, :], g[:, :bw], g[:, w - bw:]]
+    top, bot = g[:bh, :], g[h - bh:, :]
+    left, right = g[:, :bw], g[:, w - bw:]
     core = float(g.std())
     if core < 1.0:
         return False                     # whole frame flat -> not a bar artifact
-    for b in bands:
-        if float(b.std()) < 6.0:         # one near-constant edge band
-            return True
-    return False
+
+    # A real bar is near-constant AND dark. A single dark edge band is just dark
+    # scenery (e.g. a podcast backdrop under the cold-open title banner) -> NOT a
+    # bar. Letterbox/pillarbox always comes as an OPPOSING PAIR (top+bottom or
+    # left+right), so require both members of a pair to qualify.
+    def bar(b):
+        return float(b.std()) < 6.0 and float(b.mean()) < 32.0
+    return (bar(top) and bar(bot)) or (bar(left) and bar(right))
 
 
 def creditopen(path, td):
