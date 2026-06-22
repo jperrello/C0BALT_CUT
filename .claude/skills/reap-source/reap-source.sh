@@ -58,6 +58,15 @@ reap_one() {
     echo "  $id: already reaped, skip" >&2; return 0
   fi
 
+  # Never reap a source with a LIVE pipeline run — a tmux shorts-<id>-* pane or
+  # any process referencing work/<id> means files are in flight and deleting
+  # them would corrupt the run. Unconditional (even --force won't override).
+  if tmux ls 2>/dev/null | grep -q "^shorts-${id}-" \
+     || ps ax -o command 2>/dev/null | grep -F "work/$id" | grep -qv grep; then
+    echo "  $id: ACTIVE pipeline run detected — skip (refusing to reap a live run)" >&2
+    return 1
+  fi
+
   slug="$(slug_of "$d/ingest.json")"; [[ -n "$slug" ]] || slug="$id"
   nshorts=0
   [[ -d "$OUT/$slug" ]] && nshorts="$(find "$OUT/$slug" -maxdepth 1 -name '*.mp4' ! -name '.*' ! -name '*.orig.mp4' 2>/dev/null | wc -l | tr -d ' ')"
