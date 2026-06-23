@@ -22,3 +22,22 @@ HOLD software-engineer
 HOLD aivideo
 HOLD how-to-get-things-done
 HOLD elite-software
+
+# ==== AUTO (analytics-feedback) — regenerated each run; hand-edit ONLY above this line ====
+# derived from Content 2026-05-26_2026-06-23 C0BALT_CUT | 26 videos | GO>= 600v&5.0%CTR&n>=3, HOLD<= 60v&n>=2
+# \bspace\b  n=6 med=1530v ctr=11.46% ret=0.41
+GO \bspace\b
+# black[ -]?hole  n=3 med=1351v ctr=10.73% ret=0.4
+GO black[ -]?hole
+# joe[ -]?rogan  n=3 med=1137v ctr=9.59% ret=0.41
+GO joe[ -]?rogan
+# \bai\b|aivideo  n=5 med=5v ctr=1.69% ret=0.23
+HOLD \bai\b|aivideo
+# software  n=6 med=5v ctr=1.58% ret=0.1
+HOLD software
+# coding|coder  n=2 med=4v ctr=1.28% ret=0.38
+HOLD coding|coder
+# starlink  n=2 med=4v ctr=1.53% ret=0.1
+HOLD starlink
+# ozempic  n=2 med=3v ctr=1.82% ret=0.32
+HOLD ozempic
