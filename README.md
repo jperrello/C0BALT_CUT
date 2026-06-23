@@ -1,5 +1,7 @@
 # 💎 C0BALT_CUT ⚡
 
+Joey here, the creator of C0BALT_CUT. This project is designed to investigate Youtube Short automation. I plan to add customizability in the future along with a free website for you to take this exact idea. In the meantime, if you are not me or named Joey Perrello, please do not use this! It is highly unstable and subject to many changes! Please wait for future news and analytics as C0BALT_CUT continues to grow on YouTube!
+
 ### *Zero filler. All payoff.* — the sharpest minute in podcasts. 🔪
 
 > 🎙️ Feed it hours of rambling podcast. 💎 Get back gems.
