@@ -100,26 +100,16 @@ def scratch():
     return [x / pk * 0.35 for x in out]
 
 
-def ding():
-    # bright bell: fundamental + octave, fast attack, ringing decay
-    m = int(0.55 * sr)
-    out = []
-    for i in range(m):
-        p = i / m
-        s = (math.sin(2 * math.pi * 1318.5 * (i / sr))
-             + 0.5 * math.sin(2 * math.pi * 2637 * (i / sr)))
-        env = math.exp(-p * 6) * (1 if p > 0.003 else p / 0.003)
-        out.append(s * env)
-    pk = max((abs(x) for x in out), default=1.0) or 1.0
-    return [x / pk * 0.3 for x in out]
-
-
-COMEDY = {"boom": boom, "scratch": scratch, "ding": ding}
+# "ding" (the insight/aha-moment bell) is retired — only boom/scratch remain.
+COMEDY = {"boom": boom, "scratch": scratch}
 
 if plan.get("events"):
     # comedy plan: render each marked beat, no riser/hit/stinger bed
     for e in plan["events"]:
-        add(int(float(e["t"]) * sr), COMEDY[e["type"]](), 1.0, 1.0)
+        sfx = COMEDY.get(e["type"])
+        if sfx is None:
+            continue
+        add(int(float(e["t"]) * sr), sfx(), 1.0, 1.0)
     with wave.open(out_path, "wb") as w:
         w.setnchannels(2)
         w.setsampwidth(2)

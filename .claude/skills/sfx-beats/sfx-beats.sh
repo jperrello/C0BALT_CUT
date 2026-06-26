@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # sfx-beats: mix synthesized SFX into a clip.
 #   tension mode (default): riser/hit/stinger at transcript pivot + RMS peak.
-#   comedy mode: Claude marks punchline/irony/insight beats -> vine boom /
-#   record scratch / ding. Canonical chain runs comedy after burn-subtitles.
+#   comedy mode: Claude marks punchline/irony beats -> vine boom / record
+#   scratch. Canonical chain runs comedy after burn-subtitles. (The "ding"
+#   insight/aha-moment bell is retired.)
 set -euo pipefail
 
 source "$(cd "$(dirname "$0")/../_lib" && pwd)/pane.sh"

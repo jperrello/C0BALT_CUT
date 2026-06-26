@@ -9,7 +9,7 @@ reply_path, dur = sys.argv[1], float(sys.argv[2])
 # POST-speed clip = the last END_CARD_DUR*SPEED s in THIS timeline — so the guard must
 # scale by SPEED, else a payoff "ding" rings over the "FOLLOW FOR MORE" beat. +1.0s
 # margin clears the bell's ~0.55s decay so nothing bleeds onto the card (shorts-hdk).
-speed = float(os.environ.get("SPEED", "1.25")) if os.environ.get("SPEED_UP", "1") != "0" else 1.0
+speed = float(os.environ.get("SPEED", "1.15")) if os.environ.get("SPEED_UP", "1") != "0" else 1.0
 endcard = 0.0 if os.environ.get("END_CARD", "1") == "0" else float(os.environ.get("END_CARD_DUR", "2.5"))
 tail = endcard * speed + (1.0 if endcard > 0 else 0.5)
 last = max(1.0, dur - tail)
@@ -25,7 +25,8 @@ except ValueError:
     json.dump({"ok": False, "reason": "bad JSON", "events": []}, sys.stdout)
     sys.exit(0)
 
-TYPES = {"boom", "scratch", "ding"}
+# "ding" (the insight/aha-moment bell) is retired — drop it if Claude marks one.
+TYPES = {"boom", "scratch"}
 events = []
 for b in beats if isinstance(beats, list) else []:
     try:

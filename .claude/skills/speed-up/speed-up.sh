@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# speed-up: globally retime a finished short by SPEED (default 1.25x) — the LAST
+# speed-up: globally retime a finished short by SPEED (default 1.15x) — the LAST
 # step of the per-span edit chain. Video is retimed with setpts=PTS/SPEED and
 # audio with atempo=SPEED (pitch-corrected), so every relative beat (captions,
 # zoom punches, b-roll windows, CTA, end-card) compresses uniformly and stays in
@@ -11,10 +11,10 @@ source "$(cd "$(dirname "$0")/../_lib" && pwd)/encode.sh"
 
 input="${1:-}"
 out="${2:-}"
-speed="${3:-${SPEED:-1.25}}"
+speed="${3:-${SPEED:-1.15}}"
 
 if [[ -z "$input" || -z "$out" ]]; then
-  echo "usage: speed-up.sh <in.mp4> <out.mp4> [speed=1.25]" >&2
+  echo "usage: speed-up.sh <in.mp4> <out.mp4> [speed=1.15]" >&2
   exit 2
 fi
 [[ -f "$input" ]] || { echo "speed-up: input not found: $input" >&2; exit 2; }

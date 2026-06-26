@@ -1,6 +1,6 @@
 ---
 name: sfx-beats
-description: Mix synthesized SFX into a short. Two modes — comedy (CANONICAL, runs after burn-subtitles in the pipeline): Claude marks punchline/irony/insight beats and a vine boom / record scratch / ding lands on each; tension (on request only): riser ending at the first pivot word, low hit at the loudest RMS peak after it, soft outro stinger. All SFX synthesized with stdlib `wave` — no external assets. Comedy mode marks ZERO beats on non-comedic clips and passes through untouched.
+description: Mix synthesized SFX into a short. Two modes — comedy (CANONICAL, runs after burn-subtitles in the pipeline): Claude marks punchline/irony beats and a vine boom / record scratch lands on each; tension (on request only): riser ending at the first pivot word, low hit at the loudest RMS peak after it, soft outro stinger. All SFX synthesized with stdlib `wave` — no external assets. Comedy mode marks ZERO beats on non-comedic clips and passes through untouched.
 allowed-tools: Bash
 user-invocable: true
 ---
@@ -18,7 +18,9 @@ amplifies the moment:
    a punchline, absurd claim, or savage line landing.
 2. **scratch** (record scratch, ~0.32s back-and-forth filtered noise) — a
    wait-WHAT irony pivot.
-3. **ding** (bell, 1318/2637Hz ring) — a sharp insight clicking into place.
+
+The "ding" insight/aha-moment bell is RETIRED — comedy mode marks only
+punchline (boom) and irony (scratch) beats.
 
 The prompt is explicitly conservative: a boom on a mediocre beat reads as
 cringe, so ZERO beats is a valid answer → passthrough copy. Beats are
