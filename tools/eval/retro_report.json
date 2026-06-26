@@ -1,0 +1,1618 @@
+{
+  "csv": "/Users/jperr/Downloads/Content 2026-05-26_2026-06-23 C0BALT_CUT/Table data.csv",
+  "n_csv_videos": 26,
+  "n_matched": 14,
+  "n_unmatched": 12,
+  "unmatched": [
+    {
+      "slug": "the-one-thing-chatgpt-could-not-build",
+      "views": 1617.0,
+      "title": "the one thing chatgpt could not build"
+    },
+    {
+      "slug": "how-mrbeast-got-his-name",
+      "views": 1494.0,
+      "title": "how mrbeast got his name   #theovon #mrbeast  #funny #youdontknow"
+    },
+    {
+      "slug": "gold-stars-made-kids-quit-drawing",
+      "views": 1335.0,
+      "title": "gold stars made kids quit drawing #motivation #workethic #rewards #huberman #podcast #shorts"
+    },
+    {
+      "slug": "dopamine-is-not-a-reward-molecule",
+      "views": 1213.0,
+      "title": "dopamine is NOT a reward molecule #huberman #dopamine  #shorts #mindset"
+    },
+    {
+      "slug": "he-used-more-scaffolding-than-the-olympics",
+      "views": 1159.0,
+      "title": "he used more scaffolding than the olympics"
+    },
+    {
+      "slug": "the-phone-habit-nobody-chooses",
+      "views": 1025.0,
+      "title": "the phone habit nobody chooses #phone #huberman #selfimprovement #selfcare"
+    },
+    {
+      "slug": "the-productivity-dragon",
+      "views": 9.0,
+      "title": "the productivity dragon  #ai #aivideo #software #funny #podcast  #development"
+    },
+    {
+      "slug": "what-is-ai-s-real-role-on-a-dev-team",
+      "views": 6.0,
+      "title": "what is ai's real role on a dev team"
+    },
+    {
+      "slug": "why-speed-isnt-what-bosses-really-want",
+      "views": 5.0,
+      "title": "why speed isnt what bosses really want  #software #ai #aivideo #funny #development #podcast #coding"
+    },
+    {
+      "slug": "starlink-works-in-antarctica",
+      "views": 4.0,
+      "title": "starlink works in antarctica #ai #aivideo #software #mrbeast #elon #starlight  #funny #podcast"
+    },
+    {
+      "slug": "why-the-fastest-coders-arent-the-best",
+      "views": 4.0,
+      "title": "why the fastest coders arent the best"
+    },
+    {
+      "slug": "mrbeast-wants-ozempic-in-food",
+      "views": 3.0,
+      "title": "Mrbeast wants ozempic in food #ai #aivideo #mrbeast #funny #podcast"
+    }
+  ],
+  "bootstrap_B": 3000,
+  "fdr_q": 0.1,
+  "primary_outcome": "avd_frac (retention proxy = avg view duration / clip duration)",
+  "note": "Observational, small-n, confounded (title/thumbnail/topic/posting-time). Prunes anti-correlated \u00a79 claims; never confirms the corpus (that is Tier 2).",
+  "claim_verdicts": [
+    {
+      "feature": "arousal_humor",
+      "claimed_sign": 1,
+      "rho_retention": -0.5625686771261945,
+      "ci_retention": [
+        -0.8295624955111,
+        -0.3109793721115624
+      ],
+      "rho_views": -0.12621733140651803,
+      "verdict": "CONTRADICTS \u2014 prune candidate",
+      "reverses_vs_views": false
+    },
+    {
+      "feature": "arousal_density",
+      "claimed_sign": 1,
+      "rho_retention": -0.4323460152737353,
+      "ci_retention": [
+        -0.8595177303434687,
+        0.18305205246964348
+      ],
+      "rho_views": 0.04803844614152614,
+      "verdict": "unsupported (CI crosses 0; small-n)",
+      "reverses_vs_views": false
+    },
+    {
+      "feature": "has_pivot",
+      "claimed_sign": 1,
+      "rho_retention": 0.35300904324873134,
+      "ci_retention": [
+        -0.21485382178706966,
+        0.7646945226735035
+      ],
+      "rho_views": -0.23533936216582083,
+      "verdict": "unsupported (CI crosses 0; small-n)",
+      "reverses_vs_views": false
+    },
+    {
+      "feature": "arousal_awe",
+      "claimed_sign": 1,
+      "rho_retention": 0.24080732065382354,
+      "ci_retention": [
+        0.0,
+        0.5910187075906617
+      ],
+      "rho_views": 0.3784115038845798,
+      "verdict": "unsupported (CI crosses 0; small-n)",
+      "reverses_vs_views": false
+    },
+    {
+      "feature": "opens_number",
+      "claimed_sign": 1,
+      "rho_retention": -0.20254787341673333,
+      "ci_retention": [
+        -0.5922664181112007,
+        0.17334381132038412
+      ],
+      "rho_views": -0.10127393670836667,
+      "verdict": "unsupported (CI crosses 0; small-n)",
+      "reverses_vs_views": false
+    },
+    {
+      "feature": "arousal_anxiety",
+      "claimed_sign": 1,
+      "rho_retention": -0.17200522903844537,
+      "ci_retention": [
+        -0.5122581343297672,
+        0.10222196548652245
+      ],
+      "rho_views": 0.24080732065382354,
+      "verdict": "unsupported (CI crosses 0; small-n)",
+      "reverses_vs_views": false
+    },
+    {
+      "feature": "jargon_density",
+      "claimed_sign": -1,
+      "rho_retention": -0.16648888883829396,
+      "ci_retention": [
+        -0.65772987829315,
+        0.392890226993417
+      ],
+      "rho_views": 0.20234803412654193,
+      "verdict": "unsupported (CI crosses 0; small-n)",
+      "reverses_vs_views": false
+    },
+    {
+      "feature": "opens_question",
+      "claimed_sign": 1,
+      "rho_retention": 0.1032031374230672,
+      "ci_retention": [
+        -0.1959031538599885,
+        0.4569538468837068
+      ],
+      "rho_views": -0.4472135954999579,
+      "verdict": "unsupported (CI crosses 0; small-n)",
+      "reverses_vs_views": false
+    },
+    {
+      "feature": "opening_hedge",
+      "claimed_sign": -1,
+      "rho_retention": -0.06477502756312957,
+      "ci_retention": [
+        -0.5489334760866074,
+        0.3667867050919519
+      ],
+      "rho_views": -0.10795837927188262,
+      "verdict": "unsupported (CI crosses 0; small-n)",
+      "reverses_vs_views": false
+    }
+  ],
+  "outcomes": {
+    "avd_frac": [
+      {
+        "rho": 0.577717190274766,
+        "p": 0.03866122247447627,
+        "ci": [
+          -0.026350176201780835,
+          0.8238885143810992
+        ],
+        "n": 13,
+        "frac_pos": 0.9716666666666667,
+        "feature": "replay_quotient",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.5773502691896257,
+        "p": 0.308068009250357,
+        "ci": [
+          -1.0,
+          0.3952847075210474
+        ],
+        "n": 5,
+        "frac_pos": 0.06463326071169208,
+        "feature": "payoff_offset_sec",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.5625686771261945,
+        "p": 0.03623703747166824,
+        "ci": [
+          -0.8295624955111,
+          -0.3109793721115624
+        ],
+        "n": 14,
+        "frac_pos": 0.0,
+        "feature": "arousal_humor",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.4323460152737353,
+        "p": 0.12260640653877192,
+        "ci": [
+          -0.8595177303434687,
+          0.18305205246964348
+        ],
+        "n": 14,
+        "frac_pos": 0.07466666666666667,
+        "feature": "arousal_density",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.38326084161662965,
+        "p": 0.17616067937332114,
+        "ci": [
+          -0.21553698364711862,
+          0.7995789291758651
+        ],
+        "n": 14,
+        "frac_pos": 0.9233333333333333,
+        "feature": "overall_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.35300904324873134,
+        "p": 0.21570275673150444,
+        "ci": [
+          -0.21485382178706966,
+          0.7646945226735035
+        ],
+        "n": 14,
+        "frac_pos": 0.9012803234501348,
+        "feature": "has_pivot",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.24080732065382354,
+        "p": 0.40692210333453627,
+        "ci": [
+          0.0,
+          0.5910187075906617
+        ],
+        "n": 14,
+        "frac_pos": 0.9717804002052335,
+        "feature": "arousal_awe",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.24037008503093263,
+        "p": 0.4078005859394439,
+        "ci": [
+          -0.354579127888577,
+          0.7217619384421817
+        ],
+        "n": 14,
+        "frac_pos": 0.7822311289245157,
+        "feature": "structure_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.20254787341673333,
+        "p": 0.4873949362586204,
+        "ci": [
+          -0.5922664181112007,
+          0.17334381132038412
+        ],
+        "n": 14,
+        "frac_pos": 0.10634257500949487,
+        "feature": "opens_number",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.17200522903844537,
+        "p": 0.5565381001284011,
+        "ci": [
+          -0.5122581343297672,
+          0.10222196548652245
+        ],
+        "n": 14,
+        "frac_pos": 0.06375321336760925,
+        "feature": "arousal_anxiety",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.16648888883829396,
+        "p": 0.56945121004783,
+        "ci": [
+          -0.65772987829315,
+          0.392890226993417
+        ],
+        "n": 14,
+        "frac_pos": 0.27903871829105475,
+        "feature": "jargon_density",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.13397282541141672,
+        "p": 0.6479497392475531,
+        "ci": [
+          -0.5385630148542657,
+          0.8096287191475462
+        ],
+        "n": 14,
+        "frac_pos": 0.633,
+        "feature": "hook_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.11952286093343938,
+        "p": 0.7263142108887259,
+        "ci": [
+          -0.6915640748081245,
+          0.5863019699779287
+        ],
+        "n": 11,
+        "frac_pos": 0.3314266487213997,
+        "feature": "hook_is_question",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.1032031374230672,
+        "p": 0.725522280810238,
+        "ci": [
+          -0.1959031538599885,
+          0.4569538468837068
+        ],
+        "n": 14,
+        "frac_pos": 0.775438596491228,
+        "feature": "opens_question",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.06477502756312957,
+        "p": 0.825872030672711,
+        "ci": [
+          -0.5489334760866074,
+          0.3667867050919519
+        ],
+        "n": 14,
+        "frac_pos": 0.35003455425017277,
+        "feature": "opening_hedge",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.03706246583305506,
+        "p": 0.9043203934564912,
+        "ci": [
+          -0.6437483355256333,
+          0.6814327133468363
+        ],
+        "n": 13,
+        "frac_pos": 0.4512683578104139,
+        "feature": "context_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.0,
+        "p": 1.0,
+        "ci": [
+          -1.0,
+          1.0
+        ],
+        "n": 5,
+        "frac_pos": 0.39759912695525645,
+        "feature": "hook_payoff_coherence",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 14,
+        "frac_pos": NaN,
+        "feature": "arousal_anger",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 14,
+        "frac_pos": NaN,
+        "feature": "fragment_opener",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 11,
+        "frac_pos": NaN,
+        "feature": "hook_is_provocation",
+        "fdr_pass": false
+      }
+    ],
+    "avd_sec": [
+      {
+        "rho": 0.5392027109231149,
+        "p": 0.057224771774962116,
+        "ci": [
+          0.022718532015689158,
+          0.8197309700902041
+        ],
+        "n": 13,
+        "frac_pos": 0.978,
+        "feature": "replay_quotient",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.5084755350948297,
+        "p": 0.06336276658521699,
+        "ci": [
+          -0.80357943621891,
+          -0.24322485575857355
+        ],
+        "n": 14,
+        "frac_pos": 0.0,
+        "feature": "arousal_humor",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.4780914437337575,
+        "p": 0.13690412558075207,
+        "ci": [
+          -0.8625319429777686,
+          0.1308967394028317
+        ],
+        "n": 11,
+        "frac_pos": 0.047571189279731994,
+        "feature": "hook_is_question",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.4666591910891111,
+        "p": 0.09253878059390763,
+        "ci": [
+          -0.9065642069843461,
+          0.11690287691161416
+        ],
+        "n": 14,
+        "frac_pos": 0.05533333333333333,
+        "feature": "arousal_density",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.4163005693422012,
+        "p": 0.13870634508003313,
+        "ci": [
+          -0.27586337357009455,
+          0.8440723179652773
+        ],
+        "n": 14,
+        "frac_pos": 0.9003333333333333,
+        "feature": "overall_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.3784115038845798,
+        "p": 0.18215743202537474,
+        "ci": [
+          0.24322485575857355,
+          0.7204867268697638
+        ],
+        "n": 14,
+        "frac_pos": 1.0,
+        "feature": "opens_question",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.22237479499833038,
+        "p": 0.4652579493612322,
+        "ci": [
+          -0.7603576014787263,
+          0.3979889342511894
+        ],
+        "n": 13,
+        "frac_pos": 0.227,
+        "feature": "context_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.15689290811054724,
+        "p": 0.5922044392421609,
+        "ci": [
+          -0.3951057121134311,
+          0.6232448826929743
+        ],
+        "n": 14,
+        "frac_pos": 0.7008748317631225,
+        "feature": "has_pivot",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.06477502756312957,
+        "p": 0.825872030672711,
+        "ci": [
+          -0.35655300425469616,
+          0.5094725919621949
+        ],
+        "n": 14,
+        "frac_pos": 0.5944827586206897,
+        "feature": "opening_hedge",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.05547001962252291,
+        "p": 0.8506081329827977,
+        "ci": [
+          -0.5437647244134138,
+          0.6165147992851077
+        ],
+        "n": 14,
+        "frac_pos": 0.5491310160427807,
+        "feature": "structure_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.05063696835418333,
+        "p": 0.8635081393692903,
+        "ci": [
+          -0.440632736163458,
+          0.3271266150261379
+        ],
+        "n": 14,
+        "frac_pos": 0.358695652173913,
+        "feature": "opens_number",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.034401045807689073,
+        "p": 0.9070587112630835,
+        "ci": [
+          -0.3263956049169334,
+          0.24349798875396403
+        ],
+        "n": 14,
+        "frac_pos": 0.3555787278415016,
+        "feature": "arousal_anxiety",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.034401045807689073,
+        "p": 0.9070587112630835,
+        "ci": [
+          -0.24351169151512456,
+          0.3263956049169334
+        ],
+        "n": 14,
+        "frac_pos": 0.5742574257425742,
+        "feature": "arousal_awe",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.019138975058773818,
+        "p": 0.9482218124400195,
+        "ci": [
+          -0.6260354496827849,
+          0.6257476752784944
+        ],
+        "n": 14,
+        "frac_pos": 0.4593333333333333,
+        "feature": "hook_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.01280683760294569,
+        "p": 0.9653409654613074,
+        "ci": [
+          -0.5039025913393133,
+          0.5094410043408676
+        ],
+        "n": 14,
+        "frac_pos": 0.4879679144385027,
+        "feature": "jargon_density",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.0,
+        "p": 1.0,
+        "ci": [
+          -1.0,
+          1.0
+        ],
+        "n": 5,
+        "frac_pos": 0.3957415565345081,
+        "feature": "hook_payoff_coherence",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.0,
+        "p": 1.0,
+        "ci": [
+          -1.0,
+          1.0
+        ],
+        "n": 5,
+        "frac_pos": 0.3750918442321822,
+        "feature": "payoff_offset_sec",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 14,
+        "frac_pos": NaN,
+        "feature": "arousal_anger",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 14,
+        "frac_pos": NaN,
+        "feature": "fragment_opener",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 11,
+        "frac_pos": NaN,
+        "feature": "hook_is_provocation",
+        "fdr_pass": false
+      }
+    ],
+    "log_views": [
+      {
+        "rho": 0.8660254037844386,
+        "p": 0.05766888562243733,
+        "ci": [
+          0.7254762501100117,
+          1.0
+        ],
+        "n": 5,
+        "frac_pos": 1.0,
+        "feature": "hook_payoff_coherence",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.8660254037844386,
+        "p": 0.05766888562243733,
+        "ci": [
+          0.7254762501100117,
+          1.0
+        ],
+        "n": 5,
+        "frac_pos": 1.0,
+        "feature": "payoff_offset_sec",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.5792965594550208,
+        "p": 0.029933781366618964,
+        "ci": [
+          0.0276403435274403,
+          0.8838067036911477
+        ],
+        "n": 14,
+        "frac_pos": 0.9803333333333333,
+        "feature": "overall_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.4593354014105716,
+        "p": 0.09847272844690425,
+        "ci": [
+          -0.08704619608472444,
+          0.8394708979007198
+        ],
+        "n": 14,
+        "frac_pos": 0.9513333333333334,
+        "feature": "hook_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.4472135954999579,
+        "p": 0.10886430106296381,
+        "ci": [
+          -0.7258694887387375,
+          -0.44869525697105217
+        ],
+        "n": 14,
+        "frac_pos": 0.0,
+        "feature": "opens_question",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.3784115038845798,
+        "p": 0.18215743202537474,
+        "ci": [
+          0.2424852979397608,
+          0.7196785530575034
+        ],
+        "n": 14,
+        "frac_pos": 0.9994929006085193,
+        "feature": "arousal_awe",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.2988071523335984,
+        "p": 0.3720822882099639,
+        "ci": [
+          -0.4097716102729297,
+          0.8483078263368191
+        ],
+        "n": 11,
+        "frac_pos": 0.7886944818304172,
+        "feature": "hook_is_question",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.24080732065382354,
+        "p": 0.40692210333453627,
+        "ci": [
+          0.034630134104711906,
+          0.5941143304788712
+        ],
+        "n": 14,
+        "frac_pos": 0.9783839423571796,
+        "feature": "arousal_anxiety",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.23533936216582083,
+        "p": 0.41797848970091245,
+        "ci": [
+          -0.7115124735378855,
+          0.32769858656448864
+        ],
+        "n": 14,
+        "frac_pos": 0.1882747068676717,
+        "feature": "has_pivot",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.20234803412654193,
+        "p": 0.4878337707442263,
+        "ci": [
+          -0.33223374163698477,
+          0.6913916514051746
+        ],
+        "n": 14,
+        "frac_pos": 0.7704644169729369,
+        "feature": "jargon_density",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.14824986333222023,
+        "p": 0.6288476509376125,
+        "ci": [
+          -0.4674357122030627,
+          0.6405238285783421
+        ],
+        "n": 13,
+        "frac_pos": 0.695,
+        "feature": "context_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.12621733140651803,
+        "p": 0.6672261888257451,
+        "ci": [
+          -0.599848763823794,
+          0.3813563849048451
+        ],
+        "n": 14,
+        "frac_pos": 0.32628398791540786,
+        "feature": "arousal_humor",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.10795837927188262,
+        "p": 0.7133514523779927,
+        "ci": [
+          -0.515563418419076,
+          0.31722328406755634
+        ],
+        "n": 14,
+        "frac_pos": 0.28467908902691513,
+        "feature": "opening_hedge",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.10127393670836667,
+        "p": 0.7304773852271074,
+        "ci": [
+          -0.5103103630798288,
+          0.316227766016838
+        ],
+        "n": 14,
+        "frac_pos": 0.31252350507709664,
+        "feature": "opens_number",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.09245003270420486,
+        "p": 0.7532635607854263,
+        "ci": [
+          -0.4798465121161214,
+          0.6354965983610764
+        ],
+        "n": 14,
+        "frac_pos": 0.6036789297658863,
+        "feature": "structure_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.04803844614152614,
+        "p": 0.8704572022197541,
+        "ci": [
+          -0.5613566584714531,
+          0.6406162097248862
+        ],
+        "n": 14,
+        "frac_pos": 0.5526666666666666,
+        "feature": "arousal_density",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.024759308154632828,
+        "p": 0.9360090189501213,
+        "ci": [
+          -0.6420454545454546,
+          0.651366056422754
+        ],
+        "n": 13,
+        "frac_pos": 0.468,
+        "feature": "replay_quotient",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 14,
+        "frac_pos": NaN,
+        "feature": "arousal_anger",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 14,
+        "frac_pos": NaN,
+        "feature": "fragment_opener",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 11,
+        "frac_pos": NaN,
+        "feature": "hook_is_provocation",
+        "fdr_pass": false
+      }
+    ],
+    "ctr": [
+      {
+        "rho": 0.6167415842106685,
+        "p": 0.018811710747881974,
+        "ci": [
+          0.0737980475899939,
+          0.8266268714961308
+        ],
+        "n": 14,
+        "frac_pos": 0.9856666666666667,
+        "feature": "overall_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.4472135954999579,
+        "p": 0.10886430106296381,
+        "ci": [
+          0.44869525697105217,
+          0.7329456339494638
+        ],
+        "n": 14,
+        "frac_pos": 1.0,
+        "feature": "arousal_anxiety",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.4175029058560295,
+        "p": 0.13745341474940045,
+        "ci": [
+          -0.1643180987833752,
+          0.8025494708852384
+        ],
+        "n": 14,
+        "frac_pos": 0.9315754339118825,
+        "feature": "jargon_density",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.3670584895244009,
+        "p": 0.1967053602572416,
+        "ci": [
+          -0.7291676029956534,
+          0.10249196670254615
+        ],
+        "n": 14,
+        "frac_pos": 0.05119335869941197,
+        "feature": "opening_hedge",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.3603854853618778,
+        "p": 0.22641748750441454,
+        "ci": [
+          -0.8813665614782756,
+          0.34519091076281994
+        ],
+        "n": 13,
+        "frac_pos": 0.14066666666666666,
+        "feature": "replay_quotient",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.3209526427194315,
+        "p": 0.2632001209428904,
+        "ci": [
+          -0.7097013594022608,
+          0.10486717676494973
+        ],
+        "n": 14,
+        "frac_pos": 0.07233883058470765,
+        "feature": "arousal_humor",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.3096094122692017,
+        "p": 0.2813921686213159,
+        "ci": [
+          -0.6374372205226957,
+          -0.1041225599272453
+        ],
+        "n": 14,
+        "frac_pos": 0.0021253985122210413,
+        "feature": "opens_question",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.28867513459481287,
+        "p": 0.6376180914006018,
+        "ci": [
+          -0.968245836551854,
+          1.0
+        ],
+        "n": 5,
+        "frac_pos": 0.6356334428623586,
+        "feature": "hook_payoff_coherence",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.28867513459481287,
+        "p": 0.6376180914006018,
+        "ci": [
+          -1.0,
+          0.968245836551854
+        ],
+        "n": 5,
+        "frac_pos": 0.18374816983894582,
+        "feature": "payoff_offset_sec",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.2773500981126145,
+        "p": 0.3370490579535844,
+        "ci": [
+          -0.6895571051436803,
+          0.2892616324460873
+        ],
+        "n": 14,
+        "frac_pos": 0.13618157543391188,
+        "feature": "structure_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.24880667576405963,
+        "p": 0.39102411768898016,
+        "ci": [
+          -0.7429408468770621,
+          0.3897654733871457
+        ],
+        "n": 14,
+        "frac_pos": 0.20633333333333334,
+        "feature": "hook_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.19672887467482134,
+        "p": 0.5002484038528437,
+        "ci": [
+          -0.43918082550494814,
+          0.7726637403553888
+        ],
+        "n": 14,
+        "frac_pos": 0.72,
+        "feature": "arousal_density",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.17928429140015906,
+        "p": 0.5978685156511413,
+        "ci": [
+          -0.4091514661330758,
+          0.7574730570117761
+        ],
+        "n": 11,
+        "frac_pos": 0.6732507532641446,
+        "feature": "hook_is_question",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.11766968108291041,
+        "p": 0.6886943802165444,
+        "ci": [
+          -0.6526599144280193,
+          0.46844444928382056
+        ],
+        "n": 14,
+        "frac_pos": 0.3280672268907563,
+        "feature": "has_pivot",
+        "fdr_pass": false
+      },
+      {
+        "rho": 0.1032031374230672,
+        "p": 0.725522280810238,
+        "ci": [
+          -0.1975650755228712,
+          0.4544820112774978
+        ],
+        "n": 14,
+        "frac_pos": 0.7769110764430577,
+        "feature": "arousal_awe",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.10127393670836667,
+        "p": 0.7304773852271074,
+        "ci": [
+          -0.5004732608726313,
+          0.306975348056686
+        ],
+        "n": 14,
+        "frac_pos": 0.27462913655382276,
+        "feature": "opens_number",
+        "fdr_pass": false
+      },
+      {
+        "rho": -0.01853123291652753,
+        "p": 0.952086249486336,
+        "ci": [
+          -0.6323023931487256,
+          0.629712235592627
+        ],
+        "n": 13,
+        "frac_pos": 0.4686457638425617,
+        "feature": "context_score",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 14,
+        "frac_pos": NaN,
+        "feature": "arousal_anger",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 14,
+        "frac_pos": NaN,
+        "feature": "fragment_opener",
+        "fdr_pass": false
+      },
+      {
+        "rho": NaN,
+        "p": NaN,
+        "ci": [
+          NaN,
+          NaN
+        ],
+        "n": 11,
+        "frac_pos": NaN,
+        "feature": "hook_is_provocation",
+        "fdr_pass": false
+      }
+    ]
+  },
+  "matched": [
+    {
+      "csv_slug": "black-holes-store-data-on-the-surface",
+      "delivered": "black-holes-store-data-on-the-surface",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "13398e9062",
+      "views": 3063.0,
+      "ctr": 14.0,
+      "avd_sec": 17.576650342801177,
+      "avd_frac": 0.4286987888488092,
+      "duration": 41.0,
+      "features": {
+        "hook_score": 8.0,
+        "context_score": 8.0,
+        "structure_score": 8.0,
+        "hook_payoff_coherence": 9.0,
+        "payoff_offset_sec": 3.0,
+        "overall_score": 76.25,
+        "replay_quotient": 1.41,
+        "hook_is_question": 1.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.0,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 136.0
+      }
+    },
+    {
+      "csv_slug": "earth-may-hold-the-galaxy-s-only-meaning",
+      "delivered": "earth-may-hold-the-galaxy-s-only-meaning",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "df8e838b89",
+      "views": 2666.0,
+      "ctr": 9.09,
+      "avd_sec": 16.150442610652664,
+      "avd_frac": 0.4141139130936581,
+      "duration": 39.0,
+      "features": {
+        "hook_score": 8.0,
+        "context_score": 9.0,
+        "structure_score": 9.0,
+        "overall_score": 9.16,
+        "replay_quotient": 1.39,
+        "hook_is_question": 1.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 0.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.02027027027027027,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.08,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 148.0
+      }
+    },
+    {
+      "csv_slug": "mcconaughey-says-being-seen-now-beats-doing6-an-action",
+      "delivered": "mcconaughey-says-being-seen-now-beats-doing",
+      "match": "prefix",
+      "match_conf": 0.9,
+      "work_id": "83694b51a5",
+      "views": 1984.0,
+      "ctr": 13.68,
+      "avd_sec": 22.184092741935483,
+      "avd_frac": 0.5281926843317972,
+      "duration": 42.0,
+      "features": {
+        "hook_score": 8.0,
+        "context_score": 9.0,
+        "structure_score": 9.0,
+        "overall_score": 9.16,
+        "replay_quotient": 1.39,
+        "hook_is_question": 0.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.006535947712418301,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.0,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 153.0
+      }
+    },
+    {
+      "csv_slug": "brian-cox-on-why-civilizations-never-overlap",
+      "delivered": "brian-cox-why-civilizations-never-overlap",
+      "match": "jaccard",
+      "match_conf": 0.857,
+      "work_id": "13398e9062",
+      "views": 1695.0,
+      "ctr": 18.0,
+      "avd_sec": 16.089982300884955,
+      "avd_frac": 0.3352079646017699,
+      "duration": 48.0,
+      "features": {
+        "hook_score": 7.0,
+        "context_score": 9.0,
+        "structure_score": 8.0,
+        "hook_payoff_coherence": 9.0,
+        "payoff_offset_sec": 3.0,
+        "overall_score": 70.3,
+        "replay_quotient": 0.38,
+        "hook_is_question": 0.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 0.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.03614457831325301,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.030120481927710843,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.04,
+        "arousal_humor": 0.0,
+        "_n_words": 166.0
+      }
+    },
+    {
+      "csv_slug": "caseoh-s-card-declined-buying-dollar-store-noodles",
+      "delivered": "caseoh-s-card-declined-buying-dollar-store-noodles",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "168a6ce7e5",
+      "views": 1507.0,
+      "ctr": 7.77,
+      "avd_sec": 9.725733244857333,
+      "avd_frac": 0.31373333047926877,
+      "duration": 31.0,
+      "features": {
+        "hook_score": 7.0,
+        "context_score": 8.0,
+        "structure_score": 8.0,
+        "overall_score": 8.08,
+        "replay_quotient": 1.19,
+        "opening_hedge": 0.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.023622047244094488,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.08,
+        "_n_words": 127.0
+      }
+    },
+    {
+      "csv_slug": "complex-life-evolved-only-once-on-earth",
+      "delivered": "complex-life-evolved-only-once-on-earth",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "13398e9062",
+      "views": 1364.0,
+      "ctr": 8.0,
+      "avd_sec": 16.876451612903224,
+      "avd_frac": 0.3309108159392789,
+      "duration": 51.0,
+      "features": {
+        "hook_score": 7.0,
+        "context_score": 8.0,
+        "structure_score": 8.0,
+        "hook_payoff_coherence": 8.0,
+        "payoff_offset_sec": 3.0,
+        "overall_score": 66.2,
+        "replay_quotient": 0.65,
+        "hook_is_question": 0.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 1.0,
+        "has_pivot": 0.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0111731843575419,
+        "opens_question": 0.0,
+        "opens_number": 1.0,
+        "arousal_density": 0.00558659217877095,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 179.0
+      }
+    },
+    {
+      "csv_slug": "how-fast-a-black-hole-kills-you",
+      "delivered": "how-fast-a-black-hole-kills-you",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "55aab50e61",
+      "views": 1351.0,
+      "ctr": 14.29,
+      "avd_sec": 12.840621761658031,
+      "avd_frac": 0.347043831396163,
+      "duration": 37.0,
+      "features": {
+        "hook_score": 7.0,
+        "context_score": 9.0,
+        "structure_score": 8.0,
+        "hook_payoff_coherence": 8.0,
+        "payoff_offset_sec": 2.0,
+        "overall_score": 71.7,
+        "replay_quotient": 0.94,
+        "hook_is_question": 1.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.006711409395973154,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.013422818791946308,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 149.0
+      }
+    },
+    {
+      "csv_slug": "huberman-on-why-dopamine-isnt-pleasure",
+      "delivered": "huberman-on-why-dopamine-isn-t-pleasure",
+      "match": "jaccard",
+      "match_conf": 0.625,
+      "work_id": "aab7a7bcde",
+      "views": 1246.0,
+      "ctr": 2.46,
+      "avd_sec": 17.392680577849116,
+      "avd_frac": 0.41411144232974084,
+      "duration": 42.0,
+      "features": {
+        "hook_score": 8.0,
+        "context_score": 9.0,
+        "structure_score": 9.0,
+        "overall_score": 9.4,
+        "replay_quotient": 2.01,
+        "hook_is_question": 0.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 1.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.0,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 149.0
+      }
+    },
+    {
+      "csv_slug": "mrbeast-explains-real-reason-for-giving-money-away",
+      "delivered": "mrbeast-s-real-reason-for-giving-money-away",
+      "match": "jaccard",
+      "match_conf": 0.778,
+      "work_id": "81d2d55a40",
+      "views": 1194.0,
+      "ctr": 6.45,
+      "avd_sec": 15.561407035175879,
+      "avd_frac": 0.39901043679938153,
+      "duration": 39.0,
+      "features": {
+        "hook_score": 8.0,
+        "structure_score": 9.0,
+        "overall_score": 9.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.0,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 168.0
+      }
+    },
+    {
+      "csv_slug": "some-galaxies-vanish-from-the-sky-forever",
+      "delivered": "some-galaxies-vanish-from-the-sky-forever",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "f8b96e1a87",
+      "views": 1137.0,
+      "ctr": 15.79,
+      "avd_sec": 17.697625329815303,
+      "avd_frac": 0.5362916766610698,
+      "duration": 33.0,
+      "features": {
+        "hook_score": 6.0,
+        "context_score": 6.0,
+        "structure_score": 8.0,
+        "hook_payoff_coherence": 8.0,
+        "payoff_offset_sec": 2.0,
+        "overall_score": 61.68,
+        "replay_quotient": 1.07,
+        "hook_is_question": 0.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.01948051948051948,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 154.0
+      }
+    },
+    {
+      "csv_slug": "huberman-started-exercising-out-of-pure-fear",
+      "delivered": "huberman-started-exercising-out-of-pure-fear",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "aab7a7bcde",
+      "views": 1099.0,
+      "ctr": 6.98,
+      "avd_sec": 14.006587807097361,
+      "avd_frac": 0.35016469517743404,
+      "duration": 40.0,
+      "features": {
+        "hook_score": 7.0,
+        "context_score": 9.0,
+        "structure_score": 8.0,
+        "overall_score": 8.18,
+        "replay_quotient": 1.44,
+        "hook_is_question": 0.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 1.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.018018018018018018,
+        "opens_question": 0.0,
+        "opens_number": 1.0,
+        "arousal_density": 0.02252252252252252,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 222.0
+      }
+    },
+    {
+      "csv_slug": "fans-say-caseoh-saved-their-lives",
+      "delivered": "fans-say-caseoh-saved-their-lives",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "168a6ce7e5",
+      "views": 984.0,
+      "ctr": 2.96,
+      "avd_sec": 7.841341463414635,
+      "avd_frac": 0.186698606271777,
+      "duration": 42.0,
+      "features": {
+        "hook_score": 8.0,
+        "context_score": 8.0,
+        "structure_score": 8.0,
+        "overall_score": 9.0,
+        "replay_quotient": 0.27,
+        "opening_hedge": 0.0,
+        "has_pivot": 0.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.05741626794258373,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.16,
+        "_n_words": 209.0
+      }
+    },
+    {
+      "csv_slug": "the-humility-definition-that-fixed-mcconaughey-s-confidence",
+      "delivered": "the-humility-definition-that-fixed-mcconaughey-s-confidence",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "83694b51a5",
+      "views": 22.0,
+      "ctr": 7.69,
+      "avd_sec": 7.707272727272727,
+      "avd_frac": 0.2083046683046683,
+      "duration": 37.0,
+      "features": {
+        "hook_score": 7.0,
+        "context_score": 9.0,
+        "structure_score": 9.0,
+        "overall_score": 8.02,
+        "replay_quotient": 1.05,
+        "hook_is_question": 1.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 0.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.0,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 184.0
+      }
+    },
+    {
+      "csv_slug": "a-black-hole-is-where-time-ends",
+      "delivered": "a-black-hole-is-where-time-ends",
+      "match": "exact",
+      "match_conf": 1.0,
+      "work_id": "df8e838b89",
+      "views": 12.0,
+      "ctr": 3.9,
+      "avd_sec": 18.930000000000003,
+      "avd_frac": 0.4027659574468086,
+      "duration": 47.0,
+      "features": {
+        "hook_score": 6.0,
+        "context_score": 8.0,
+        "structure_score": 8.0,
+        "overall_score": 8.4,
+        "replay_quotient": 5.45,
+        "hook_is_question": 0.0,
+        "hook_is_provocation": 0.0,
+        "opening_hedge": 0.0,
+        "has_pivot": 1.0,
+        "fragment_opener": 0.0,
+        "jargon_density": 0.0,
+        "opens_question": 1.0,
+        "opens_number": 0.0,
+        "arousal_density": 0.0,
+        "arousal_anger": 0.0,
+        "arousal_awe": 0.0,
+        "arousal_anxiety": 0.0,
+        "arousal_humor": 0.0,
+        "_n_words": 152.0
+      }
+    }
+  ]
+}

@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 # Build a compact prompt for Claude: transcript lines + RMS profile.
-import json, sys
+import json, os, sys
+
+# ADVICE_CORPUS toggle (epic shorts-dwt / shorts-874). OFF (default) = today's prompt
+# byte-for-byte; ON prepends the versioned §9 entertainment-advice corpus and nothing else,
+# so any ON-vs-OFF selection difference is attributable to the corpus alone.
+advice_block = ""
+if os.environ.get("ADVICE_CORPUS", "0") == "1":
+    try:
+        corpus = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "advice.md")).read().strip()
+        advice_block = corpus + "\n\n---\n\n"
+    except OSError:
+        advice_block = ""
 
 transcript_path, rms_path, n, dmin, dmax = sys.argv[1:6]
 topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
@@ -150,7 +162,7 @@ Each picked span MUST lie entirely within ONE topic — never straddle a boundar
 else:
     topic_rules = ""
 
-print(f"""You are picking clip-worthy spans for vertical shorts.
+print(f"""{advice_block}You are picking clip-worthy spans for vertical shorts.
 
 Source duration: {duration:.1f}s
 Audio energy (per ~1s of source, bucketed to ~60 bins, ▁ low → █ high):

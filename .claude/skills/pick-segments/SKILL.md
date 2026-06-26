@@ -45,5 +45,14 @@ Claude-driven segment selection. No heuristics — Claude judges what's clip-wor
 
 For batch / large transcripts, a `/crew` member can be spawned to keep this off the host session.
 
+## ADVICE_CORPUS toggle (experimental, default OFF — epic shorts-dwt)
+`ADVICE_CORPUS=1` prepends the versioned §9 entertainment-advice corpus (`advice.md`) to the
+picker prompt; unset/`0` emits today's prompt byte-for-byte. The corpus lives in its own file so
+it is A/B-able independently of code. Whether it actually improves clip SELECTION is being
+measured non-circularly (no Claude in the scorer) per `tools/eval/PRE-REGISTRATION.md`; it ships
+as default only after a CI-clean Tier-2 win. The invariant "OFF = verbatim, ON = OFF + corpus and
+nothing else" is locked by `test_advice_toggle.py`. (Later extend the same gate to
+`rlm-segment-subcall`.)
+
 ## Status
 Stub. Implementation: `bd ready`.
