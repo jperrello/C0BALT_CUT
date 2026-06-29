@@ -23,6 +23,14 @@
 #   out across the polling interval — the same pattern the overseer uses
 #   when checking crew work.
 
+# Pull in the timing instrument so run_claude_step can append its measured
+# `claude` sub-record to the same JSONL the start.sh wrapper writes. No-op
+# when SHORTS_TIMING_LOG is unset (timing.sh guards _timing_emit). Guarded so a
+# missing file never breaks a skill that only sources pane.sh.
+_pane_timing="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/timing.sh"
+# shellcheck source=/dev/null
+[[ -f "$_pane_timing" ]] && source "$_pane_timing"
+
 # usage: parse_pane_flag "$@" ; set -- "${SHORTS_REST[@]}"
 # Strips `--pane <name>` from $@, exports SHORTS_PANE, and returns the
 # remaining args via SHORTS_REST.
@@ -48,9 +56,13 @@ parse_pane_flag() {
 
 run_claude_step() {
   local step="$1" prompt="$2" reply="$3"
+  local _t0; _t0="$(_now 2>/dev/null || echo 0)"
   if [[ -z "${SHORTS_PANE:-}" ]]; then
+    local _rc
     claude -p --output-format text < "$prompt" > "$reply"
-    return $?
+    _rc=$?
+    _timing_emit "${step}/claude" claude "$_t0" "$(_now 2>/dev/null || echo 0)" "$_rc"
+    return $_rc
   fi
 
   local base="${SHORTS_PANE_DIR:-/tmp/shorts_pane}/${SHORTS_PANE}"
@@ -96,7 +108,7 @@ PY
     tmux send-keys -t "$SHORTS_PANE" "$cmd" Enter
   fi
 
-  local tick="${PANE_TICK:-6}"
+  local tick="${PANE_TICK:-2}"
   local timeout="${PANE_TIMEOUT:-1800}"
   local waited=0 prev=-1 cur=0
   while true; do
@@ -125,6 +137,7 @@ PY
   done
 
   cp "$dir/out.txt" "$reply"
+  _timing_emit "${step}/claude" claude "$_t0" "$(_now 2>/dev/null || echo 0)" 0
 }
 
 # usage: pane_clear

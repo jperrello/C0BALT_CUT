@@ -29,6 +29,13 @@ set -uo pipefail
 # are unset. Strip them at the very top so every child inherits a clean env.
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT
 
+# Timing instrument: `timed <label> <kind> -- <cmd>` brackets each skill call
+# and appends one JSONL record to $SHORTS_TIMING_LOG (set once `dir` is known
+# below). pane.sh sources the same lib for its claude sub-records, and the
+# end-of-run tail folds the log into run_timing.json + _timing.html. No-op when
+# the log is unset, so sourcing here is free.
+source "$(cd "$(dirname "$0")" && pwd)/.claude/skills/_lib/timing.sh"
+
 n="${SHORTS_N:-5}"
 dmin="${SHORTS_DMIN:-28}"
 dmax="${SHORTS_DMAX:-55}"
@@ -151,6 +158,10 @@ dir="$root/work/$id"
 mkdir -p "$dir/_pane"
 export SHORTS_PANE_DIR="$dir/_pane"
 export SHORTS_PANE_MODE=chat
+# Timing log for this run. `timed` (start.sh wrappers) + pane.sh's claude
+# sub-records append here; timing-report.py reduces it in the end-of-run tail.
+export SHORTS_TIMING_LOG="$dir/run_timing.jsonl"
+: > "$SHORTS_TIMING_LOG"
 
 # ---- pane management ------------------------------------------------------
 declare -a PANES=()
@@ -325,12 +336,14 @@ log "[phase 1] srcprep done"
 pane_new "$an" claude
 
 # Run topics/picks/coherence through the analysis pane via --pane.
+export SHORTS_TL_PHASE=analysis
 log "[phase 1 / analysis] segment-topics"
-bash "$(skill segment-topics)" "$tx" "$topics" --pane "$an" || { log "FATAL: segment-topics"; exit 3; }
+timed segment-topics claude -- bash "$(skill segment-topics)" "$tx" "$topics" --pane "$an" || { log "FATAL: segment-topics"; exit 3; }
 log "[phase 1 / analysis] pick-segments"
-bash "$(skill pick-segments)" "$tx" "$seg_raw" "$n" "$dmin" "$dmax" "$topics" --pane "$an" || { log "FATAL: pick-segments"; exit 3; }
+timed pick-segments claude -- bash "$(skill pick-segments)" "$tx" "$seg_raw" "$n" "$dmin" "$dmax" "$topics" --pane "$an" || { log "FATAL: pick-segments"; exit 3; }
 log "[phase 1 / analysis] verify-coherence"
-bash "$(skill verify-coherence)" "$seg_raw" "$tx" "$seg_coh" "$dmin" --pane "$an" || { log "FATAL: verify-coherence"; exit 3; }
+timed verify-coherence claude -- bash "$(skill verify-coherence)" "$seg_raw" "$tx" "$seg_coh" "$dmin" --pane "$an" || { log "FATAL: verify-coherence"; exit 3; }
+unset SHORTS_TL_PHASE
 
 # bookend-trim was moved to phase 2 per spec; coherent spans become segments.json
 # directly as the per-span input. Each editor pane will re-snap its own span.
@@ -375,6 +388,7 @@ pane_ready() {
 
 run_span() {
   local i="$1" idx="$2" ed="$3"
+  export SHORTS_TL_PHASE=edit
 
   # A marker from a previous run is stale the moment we re-attempt (or find
   # the phase cached): without this, retried spans stay skipped downstream
@@ -429,7 +443,7 @@ json.dump(out, open(sys.argv[3], "w"))
 ' "$seg_final" "$i" "$span_in"
 
   log "[phase 2 / span $idx] bookend-trim"
-  if ! bash "$(skill bookend-trim)" "$span_in" "$tx" "$span_out" 6.0 "$dmin" --pane "$ed"; then
+  if ! timed bookend-trim claude -- bash "$(skill bookend-trim)" "$span_in" "$tx" "$span_out" 6.0 "$dmin" --pane "$ed"; then
     log "[phase 2 / span $idx] bookend-trim FAILED — skipping span"
     echo "bookend-trim" > "$dir/clip_${idx}.fail"
     return 1
@@ -439,7 +453,7 @@ json.dump(out, open(sys.argv[3], "w"))
   # sentence. Non-fatal: passthrough leaves span_out unchanged. Source coords,
   # before cut — the outward counterpart to the inward-only verify-bookends.
   log "[phase 2 / span $idx] verify-completeness"
-  bash "$(skill verify-completeness)" "$span_out" "$tx" "$dir/clip_${idx}.span.complete.json" "$dmax" --pane "$ed" \
+  timed verify-completeness claude -- bash "$(skill verify-completeness)" "$span_out" "$tx" "$dir/clip_${idx}.span.complete.json" "$dmax" --pane "$ed" \
     && mv -f "$dir/clip_${idx}.span.complete.json" "$span_out" \
     || log "[phase 2 / span $idx] verify-completeness failed — span unchanged"
 
@@ -473,7 +487,7 @@ print(s["t0"], s["t1"])' "$span_out")
       log "[phase 2 / span $idx] assemble FAILED"; echo "assemble" > "$dir/clip_${idx}.fail"; return 1; }
   else
     log "[phase 2 / span $idx] cut-clip"
-    bash "$(skill cut-clip)" "$src" "$t0" "$t1" "$clip" true || {
+    timed cut-clip ffmpeg -- bash "$(skill cut-clip)" "$src" "$t0" "$t1" "$clip" true || {
       log "[phase 2 / span $idx] cut-clip FAILED"
       echo "cut-clip" > "$dir/clip_${idx}.fail"; return 1
     }
@@ -487,12 +501,12 @@ print(s["t0"], s["t1"])' "$span_out")
   local keeps="$dir/clip_${idx}.keeps.json"
   local trim_tx="$dir/clip_${idx}.trim.transcript.json"
   log "[phase 2 / span $idx] trim-filler"
-  if ! bash "$(skill trim-filler)" "$ctx" "$keeps" "$trim_tx" --pane "$ed"; then
+  if ! timed trim-filler claude -- bash "$(skill trim-filler)" "$ctx" "$keeps" "$trim_tx" --pane "$ed"; then
     log "[phase 2 / span $idx] trim-filler FAILED"
     echo "trim-filler" > "$dir/clip_${idx}.fail"; return 1
   fi
   local trimmed="$dir/clip_${idx}.trim.mp4"
-  bash "$(skill cut-filler)" "$clip" "$keeps" "$trimmed" >/dev/null || {
+  timed cut-filler ffmpeg -- bash "$(skill cut-filler)" "$clip" "$keeps" "$trimmed" >/dev/null || {
     log "[phase 2 / span $idx] cut-filler FAILED"
     echo "cut-filler" > "$dir/clip_${idx}.fail"; return 1
   }
@@ -501,7 +515,7 @@ print(s["t0"], s["t1"])' "$span_out")
   local tight="$dir/clip_${idx}.tight.mp4"
   local tight_tx="$dir/clip_${idx}.tight.transcript.json"
   log "[phase 2 / span $idx] tighten-pace"
-  bash "$(skill tighten-pace)" "$trimmed" "$trim_tx" "$tight" "$tight_tx" >/dev/null || {
+  timed tighten-pace ffmpeg -- bash "$(skill tighten-pace)" "$trimmed" "$trim_tx" "$tight" "$tight_tx" >/dev/null || {
     log "[phase 2 / span $idx] tighten-pace FAILED"
     echo "tighten-pace" > "$dir/clip_${idx}.fail"; return 1
   }
@@ -512,7 +526,7 @@ print(s["t0"], s["t1"])' "$span_out")
   local ctx_pre="$tight_tx"
   if [[ -x "$(skill verify-bookends)" || -f "$(skill verify-bookends)" ]]; then
     log "[phase 2 / span $idx] verify-bookends"
-    if bash "$(skill verify-bookends)" "$tight" "$tight_tx" "$vb_out" --pane "$ed"; then
+    if timed verify-bookends claude -- bash "$(skill verify-bookends)" "$tight" "$tight_tx" "$vb_out" --pane "$ed"; then
       local action
       action="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("action","keep"))' "$vb_out" 2>/dev/null || echo keep)"
       if [[ "$action" == "drop" ]]; then
@@ -541,7 +555,7 @@ print(s["t0"], s["t1"])' "$span_out")
   # --- fill-vertical -----------------------------------------------------
   local vert="$dir/clip_${idx}.vert.mp4"
   log "[phase 2 / span $idx] fill-vertical"
-  bash "$(skill fill-vertical)" "$clip_pre" "$vert" >/dev/null || {
+  timed fill-vertical ffmpeg -- bash "$(skill fill-vertical)" "$clip_pre" "$vert" >/dev/null || {
     log "[phase 2 / span $idx] fill-vertical FAILED"
     echo "fill-vertical" > "$dir/clip_${idx}.fail"; return 1
   }
@@ -555,6 +569,7 @@ print(s["t0"], s["t1"])' "$span_out")
 
 run_phase3_captions() {
   local i="$1" idx="$2" cp_pane="$3"
+  export SHORTS_TL_PHASE=captions
 
   rm -f "$dir/clip_${idx}.fail.captions"
 
@@ -576,7 +591,7 @@ run_phase3_captions() {
 
   log "[phase 3 / span $idx / captions] chunk-captions"
   local chunks="$dir/clip_${idx}.chunks.json"
-  bash "$(skill chunk-captions)" "$ctx" "$chunks" --pane "$cp_pane" >/dev/null || {
+  timed chunk-captions claude -- bash "$(skill chunk-captions)" "$ctx" "$chunks" --pane "$cp_pane" >/dev/null || {
     log "[phase 3 / span $idx / captions] chunk-captions FAILED"
     echo "chunk-captions" > "$dir/clip_${idx}.fail.captions"; return 1
   }
@@ -587,7 +602,7 @@ run_phase3_captions() {
   local jc="$dir/clip_${idx}.jc.mp4"
   if [[ "${JUMP_CUT:-1}" != "0" ]]; then
     log "[phase 3 / span $idx / captions] jump-cut"
-    bash "$(skill jump-cut)" "$vert" "$ctx" "$jc" >/dev/null || cp "$vert" "$jc"
+    timed jump-cut ffmpeg -- bash "$(skill jump-cut)" "$vert" "$ctx" "$jc" >/dev/null || cp "$vert" "$jc"
     vert="$jc"
   fi
 
@@ -596,7 +611,7 @@ run_phase3_captions() {
   local zoomed="$dir/clip_${idx}.zoom.mp4"
   if [[ "${ZOOM_PUNCH:-1}" != "0" ]]; then
     log "[phase 3 / span $idx / captions] zoom-punch"
-    bash "$(skill zoom-punch)" "$vert" "$ctx" "$zoomed" >/dev/null || cp "$vert" "$zoomed"
+    timed zoom-punch ffmpeg -- bash "$(skill zoom-punch)" "$vert" "$ctx" "$zoomed" >/dev/null || cp "$vert" "$zoomed"
   else
     zoomed="$vert"
   fi
@@ -610,7 +625,7 @@ run_phase3_captions() {
     if [[ -n "$src16" && -f "$src16" ]]; then
       log "[phase 3 / span $idx / captions] switch-faces"
       local switched="$dir/clip_${idx}.sw.mp4"
-      bash "$(skill switch-faces)" "$zoomed" "$src16" "$ctx" "$switched" "$chunks" >/dev/null \
+      timed switch-faces ffmpeg -- bash "$(skill switch-faces)" "$zoomed" "$src16" "$ctx" "$switched" "$chunks" >/dev/null \
         && zoomed="$switched" || true
     fi
   fi
@@ -618,13 +633,13 @@ run_phase3_captions() {
   # broll-pick: Claude anchors -> mcptube/yt-dlp sourced cutaways -> broll_plan.json
   log "[phase 3 / span $idx / captions] broll-pick"
   local broll_plan="$dir/clip_${idx}.broll_plan.json"
-  bash "$(skill broll-pick)" "$ctx" "$chunks" "$ingest_json" "$broll_plan" --pane "$cp_pane" >/dev/null \
+  timed broll-pick claude -- bash "$(skill broll-pick)" "$ctx" "$chunks" "$ingest_json" "$broll_plan" --pane "$cp_pane" >/dev/null \
     || echo '{"picks":[],"ingested_video_ids":[]}' > "$broll_plan"
 
   # broll-composite: full-frame hard-cut cutaways onto the vertical clip (captions burn on top)
   log "[phase 3 / span $idx / captions] broll-composite"
   local brolled="$dir/clip_${idx}.broll.mp4"
-  bash "$(skill broll-composite)" "$zoomed" "$broll_plan" "$brolled" >/dev/null || cp "$zoomed" "$brolled"
+  timed broll-composite ffmpeg -- bash "$(skill broll-composite)" "$zoomed" "$broll_plan" "$brolled" >/dev/null || cp "$zoomed" "$brolled"
 
   # fix-cold-open (PREVENTIVE): proxy-grade the pre-caption clip, then repair the
   # cold open if a route fires (truncate a cold-open b-roll cutaway / re-punch a
@@ -642,7 +657,7 @@ run_phase3_captions() {
 
   log "[phase 3 / span $idx / captions] burn-subtitles"
   local sub="$dir/clip_${idx}.sub.mp4"
-  bash "$(skill burn-subtitles)" "$brolled" "$chunks" "$sub" chunks >/dev/null || {
+  timed burn-subtitles ffmpeg -- bash "$(skill burn-subtitles)" "$brolled" "$chunks" "$sub" chunks >/dev/null || {
     log "[phase 3 / span $idx / captions] burn-subtitles FAILED"
     echo "burn-subtitles" > "$dir/clip_${idx}.fail.captions"; return 1
   }
@@ -652,14 +667,14 @@ run_phase3_captions() {
   local sfxed="$dir/clip_${idx}.sfx.mp4"
   if [[ "${SFX_COMEDY:-1}" != "0" ]]; then
     log "[phase 3 / span $idx / captions] sfx-beats (comedy)"
-    bash "$(skill sfx-beats)" "$sub" "$ctx" "$sfxed" comedy --pane "$cp_pane" >/dev/null || cp "$sub" "$sfxed"
+    timed sfx-beats claude -- bash "$(skill sfx-beats)" "$sub" "$ctx" "$sfxed" comedy --pane "$cp_pane" >/dev/null || cp "$sub" "$sfxed"
   else
     sfxed="$sub"
   fi
 
   log "[phase 3 / span $idx / captions] generate-title"
   local title_file="$dir/clip_${idx}.title.txt"
-  bash "$(skill generate-title)" "$ctx" "$ingest_json" "$title_file" "$title_ctx" --pane "$cp_pane" >/dev/null || {
+  timed generate-title claude -- bash "$(skill generate-title)" "$ctx" "$ingest_json" "$title_file" "$title_ctx" --pane "$cp_pane" >/dev/null || {
     log "[phase 3 / span $idx / captions] generate-title FAILED"
     echo "generate-title" > "$dir/clip_${idx}.fail.captions"; return 1
   }
@@ -669,7 +684,7 @@ run_phase3_captions() {
   # one channel title animation (glitch) on every short — no per-span style.
   log "[phase 3 / span $idx / captions] title-transition"
   local titled="$dir/clip_${idx}.titled.mp4"
-  bash "$(skill title-transition)" "$sfxed" "$title" "$titled" >/dev/null || {
+  timed title-transition ffmpeg -- bash "$(skill title-transition)" "$sfxed" "$title" "$titled" >/dev/null || {
     log "[phase 3 / span $idx / captions] title-transition FAILED"
     echo "title-transition" > "$dir/clip_${idx}.fail.captions"; return 1
   }
@@ -679,7 +694,7 @@ run_phase3_captions() {
   # original two-pass path, then unbranded copy.
   log "[phase 3 / span $idx / captions] brand-overlays (credit + watermark)"
   local marked="$dir/clip_${idx}.marked.mp4"
-  if ! bash "$(skill brand-overlays)" "$titled" "$ingest_json" "$marked" >/dev/null; then
+  if ! timed brand-overlays ffmpeg -- bash "$(skill brand-overlays)" "$titled" "$ingest_json" "$marked" >/dev/null; then
     log "[phase 3 / span $idx / captions] brand-overlays FAILED — two-pass fallback"
     local credited="$dir/clip_${idx}.credited.mp4"
     bash "$(skill source-credit)" "$titled" "$ingest_json" "$credited" >/dev/null || cp "$titled" "$credited"
@@ -688,7 +703,7 @@ run_phase3_captions() {
 
   log "[phase 3 / span $idx / captions] loudnorm"
   local leveled="$dir/clip_${idx}.leveled.mp4"
-  bash "$(skill loudnorm)" "$marked" "$leveled" >/dev/null || {
+  timed loudnorm ffmpeg -- bash "$(skill loudnorm)" "$marked" "$leveled" >/dev/null || {
     log "[phase 3 / span $idx / captions] loudnorm FAILED"
     echo "loudnorm" > "$dir/clip_${idx}.fail.captions"; return 1
   }
@@ -698,6 +713,7 @@ run_phase3_captions() {
 
 run_phase4() {
   local i="$1" idx="$2" cm="$3"
+  export SHORTS_TL_PHASE=completion
 
   rm -f "$dir/clip_${idx}.fail.completion"
 
@@ -721,27 +737,27 @@ run_phase4() {
 
   log "[phase 4 / span $idx] like-subscribe-overlay"
   local ctaed="$dir/clip_${idx}.ctaed.mp4"
-  bash "$(skill like-subscribe-overlay)" "$leveled" "$ctaed" 4.0 >/dev/null || cp "$leveled" "$ctaed"
+  timed like-subscribe-overlay ffmpeg -- bash "$(skill like-subscribe-overlay)" "$leveled" "$ctaed" 4.0 >/dev/null || cp "$leveled" "$ctaed"
 
   log "[phase 4 / span $idx] pick-mood + bg-music"
   local mood_file="$dir/clip_${idx}.mood.txt"
-  bash "$(skill pick-mood)" "$ctx" "$mood_file" --pane "$cm" >/dev/null || echo "ALL SONGS" > "$mood_file"
+  timed pick-mood claude -- bash "$(skill pick-mood)" "$ctx" "$mood_file" --pane "$cm" >/dev/null || echo "ALL SONGS" > "$mood_file"
   local mood; mood="$(cat "$mood_file")"
   local final="$dir/clip_${idx}.final.mp4"
-  bash "$(skill bg-music)" "$ctaed" "$final" "$mood" >/dev/null || cp "$ctaed" "$final"
+  timed bg-music ffmpeg -- bash "$(skill bg-music)" "$ctaed" "$final" "$mood" >/dev/null || cp "$ctaed" "$final"
 
   # end-card: closing CTA beat over the last ~2.5s so the short lands on an
   # intentional "FOLLOW FOR MORE" instead of dead-stopping (END_CARD=0 skips).
   log "[phase 4 / span $idx] end-card"
   local ended="$dir/clip_${idx}.ended.mp4"
-  bash "$(skill end-card)" "$final" "$ended" >/dev/null || cp "$final" "$ended"
+  timed end-card ffmpeg -- bash "$(skill end-card)" "$final" "$ended" >/dev/null || cp "$final" "$ended"
   final="$ended"
 
   # speed-up: final global retime (SPEED=1.25x) — the last edit step. Keeps every
   # relative beat in sync; qc/cadence/save below run on the delivered clip.
   log "[phase 4 / span $idx] speed-up"
   local sped="$dir/clip_${idx}.sped.mp4"
-  bash "$(skill speed-up)" "$final" "$sped" >/dev/null || cp "$final" "$sped"
+  timed speed-up ffmpeg -- bash "$(skill speed-up)" "$final" "$sped" >/dev/null || cp "$final" "$sped"
   final="$sped"
 
   # director-pass: agentic vision QA/repair — a Claude "director" WATCHES the
@@ -755,7 +771,7 @@ run_phase4() {
     log "[phase 4 / span $idx] director-pass"
     local dpreport="${final%.*}.director.json"
     local dired="${final%.*}.dir.mp4"
-    bash "$(skill director-pass)" "$final" --pane "$cm" >/dev/null 2>&1 || true
+    timed director-pass claude -- bash "$(skill director-pass)" "$final" --pane "$cm" >/dev/null 2>&1 || true
     if [[ -f "$dired" ]]; then
       final="$dired"
       local dv; dv="$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print(d.get("verdict",""),"applied="+",".join(a.get("op","") for a in d.get("applied",[])))' "$dpreport" 2>/dev/null || true)"
@@ -764,7 +780,7 @@ run_phase4() {
   fi
 
   log "[phase 4 / span $idx] qc-clip"
-  local verdict; verdict="$(bash "$(skill qc-clip)" "$final")"
+  local verdict; verdict="$(timed qc-clip det -- bash "$(skill qc-clip)" "$final")"
   local ok; ok="$(printf '%s' "$verdict" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pass"])')"
   if [[ "$ok" != "True" ]]; then
     local reason; reason="$(printf '%s' "$verdict" | python3 -c 'import json,sys; print(json.load(sys.stdin)["reason"])')"
@@ -775,7 +791,7 @@ run_phase4() {
 
   # visual-cadence: non-fatal static-gap measurement (WARN if a stretch exceeds
   # MAX_STATIC_GAP); diagnostic only, never blocks the save.
-  bash "$(skill visual-cadence)" "$final" "$dir/clip_${idx}.cadence.json" >/dev/null 2>&1 || true
+  timed visual-cadence det -- bash "$(skill visual-cadence)" "$final" "$dir/clip_${idx}.cadence.json" >/dev/null 2>&1 || true
   local cad; cad="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(str(d.get("max_gap","?"))+"s pass="+str(d.get("pass")))' "$dir/clip_${idx}.cadence.json" 2>/dev/null || true)"
   [[ -n "$cad" ]] && log "[phase 4 / span $idx] visual-cadence max_gap=$cad"
 
@@ -792,7 +808,7 @@ run_phase4() {
   fi
 
   log "[phase 4 / span $idx] save-local -> $slug/$short_name"
-  bash "$(skill save-local)" "$final" "$src" "$short_name" "$slug" >/dev/null || {
+  timed save-local det -- bash "$(skill save-local)" "$final" "$src" "$short_name" "$slug" >/dev/null || {
     log "[phase 4 / span $idx] save-local FAILED"
     echo "save-local" > "$dir/clip_${idx}.fail.completion"
     return 1
@@ -806,7 +822,7 @@ run_phase4() {
   # blocks the save. GRADE_CLIP=0 disables; proxy-only in-chain (GRADE_SKIP_CLAUDE=1).
   if [[ "${GRADE_CLIP:-1}" != "0" ]]; then
     GRADE_SKIP_CLAUDE="${GRADE_SKIP_CLAUDE:-1}" \
-      bash "$(skill grade-clip)" "$final" >/dev/null 2>&1 || true
+      timed grade-clip det -- bash "$(skill grade-clip)" "$final" >/dev/null 2>&1 || true
     local wgrade="${final%.*}.grade.json"
     if [[ -f "$wgrade" ]]; then
       python3 -c 'import json,sys
@@ -846,8 +862,10 @@ run_lane() {
   # separate statement: bash 3.2 expands a `local` line's words before any
   # of its assignments land, so $lane is unbound on the same line
   local pane="shorts-$id-lane-$lane"
+  export SHORTS_TL_LANE="$lane"
   while i="$(next_span)"; do
     idx="$(printf '%02d' "$((i + 1))")"
+    export SHORTS_TL_SPAN="$((i + 1))"
     lane_clear "$pane"
     if ! run_span "$i" "$idx" "$pane"; then
       log "[lane $lane] span $idx FAILED (edit) — next span"
@@ -905,6 +923,13 @@ bash "$(skill sources-ledger)" record "$id" >/dev/null 2>&1 || true
 # arguments are visible next to the produced shorts. Deterministic, non-fatal.
 log "[report] selection-report"
 bash "$(skill selection-report)" "$dir" "$root/output" >/dev/null 2>&1 || true
+
+# ---- timing-report --------------------------------------------------------
+# Fold this run's run_timing.jsonl (+ the run's *.grade.json / *.fail* markers)
+# into the machine report (work/<id>/run_timing.json) and the human report
+# (output/<slug>/_timing.html). Non-fatal: any error logs and exits 0.
+log "[report] timing-report"
+python3 "$root/timing-report.py" "$SHORTS_TIMING_LOG" "$dir" "$out_dir/_timing.html" >&2 2>&1 || true
 
 # ---- schedule-drip --------------------------------------------------------
 # Runs ONCE at end of run: deterministic greedy scheduler over every graded clip

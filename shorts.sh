@@ -19,6 +19,12 @@ fi
 root="$(cd "$(dirname "$0")" && pwd)"
 skill() { echo "$root/.claude/skills/$1/$1.sh"; }
 
+# Timing instrument (light touch on the legacy path): source the lib so
+# pane.sh's claude sub-records still emit. SHORTS_TIMING_LOG is set below once
+# the work dir is known. No `timed` wrapping here — start.sh is the reference
+# run; full instrumentation of shorts.sh is out of scope.
+source "$root/.claude/skills/_lib/timing.sh"
+
 step() { echo; echo ">>> $*" >&2; }
 die() { echo "shorts: FAILED — $*" >&2; exit 1; }
 
@@ -32,6 +38,8 @@ src="$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.st
 dir="$(dirname "$src")"
 ingest_json="$dir/ingest.json"
 echo "shorts: work dir $dir" >&2
+export SHORTS_TIMING_LOG="$dir/run_timing.jsonl"
+: > "$SHORTS_TIMING_LOG"
 
 # 2. transcribe -------------------------------------------------------------
 step "transcribe"
