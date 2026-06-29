@@ -108,33 +108,32 @@ PY
     tmux send-keys -t "$SHORTS_PANE" "$cmd" Enter
   fi
 
-  local tick="${PANE_TICK:-2}"
+  # Wait on the out.done sentinel the pane touches as its LAST action. The
+  # read is race-free by construction: the pane writes out.txt in full (the
+  # heredoc/redirect completes before the command returns) and THEN touches
+  # out.done, so out.done can only exist once out.txt is complete — the
+  # ordering the old byte-size settle heuristic was compensating for
+  # (shorts-tnd). A tight existence poll replaces the 2-equal-reads floor.
+  local tick="${PANE_DONE_TICK:-0.25}"
   local timeout="${PANE_TIMEOUT:-1800}"
-  local waited=0 prev=-1 cur=0
-  while true; do
+  local waited=0
+  while [[ ! -f "$dir/out.done" ]]; do
     sleep "$tick"
-    waited=$((waited + tick))
-    if [[ -f "$dir/out.txt" ]]; then
-      cur=$(wc -c < "$dir/out.txt" | tr -d ' ')
-      [[ -z "$cur" ]] && cur=0
-    else
-      cur=0
-    fi
-    if (( cur > 0 && cur == prev )); then
-      break
-    fi
-    prev=$cur
-    if (( cur == 0 && waited >= tick )) && [[ -f "$dir/out.done" ]]; then
-      echo "pane.sh: $SHORTS_PANE/$step produced empty output" >&2
-      tmux capture-pane -t "$SHORTS_PANE" -p -S -2000 > "$dir/pane.log" 2>/dev/null || true
-      return 1
-    fi
-    if (( waited >= timeout )); then
-      echo "pane.sh: timeout (${timeout}s) waiting on $SHORTS_PANE/$step (last size=$cur)" >&2
+    waited="$(_add "$waited" "$tick")"
+    if (( $(printf '%.0f' "$waited") >= timeout )); then
+      echo "pane.sh: timeout (${timeout}s) waiting on $SHORTS_PANE/$step" >&2
       tmux capture-pane -t "$SHORTS_PANE" -p -S -2000 > "$dir/pane.log" 2>/dev/null || true
       return 1
     fi
   done
+
+  # out.done present. Strengthened empty-output guard: a zero-byte or missing
+  # out.txt fails fast — no longer needs to wait out a tick to decide.
+  if [[ ! -s "$dir/out.txt" ]]; then
+    echo "pane.sh: $SHORTS_PANE/$step produced empty output" >&2
+    tmux capture-pane -t "$SHORTS_PANE" -p -S -2000 > "$dir/pane.log" 2>/dev/null || true
+    return 1
+  fi
 
   cp "$dir/out.txt" "$reply"
   _timing_emit "${step}/claude" claude "$_t0" "$(_now 2>/dev/null || echo 0)" 0

@@ -28,6 +28,12 @@ _now() {
   python3 -c 'import time; print(time.monotonic())'
 }
 
+# _add <a> <b>: float addition (bash 3.2 arithmetic is integer-only). Used by
+# the pane poll loop to accumulate a sub-second tick into the waited total.
+_add() {
+  python3 -c 'import sys; print(float(sys.argv[1]) + float(sys.argv[2]))' "$1" "$2"
+}
+
 # _timing_emit <label> <kind> <t0> <t1> <rc>
 # Append one JSONL record. No-op when SHORTS_TIMING_LOG is unset/empty.
 # lane/span/phase come from the exported context vars (default to null).
