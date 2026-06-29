@@ -20,7 +20,7 @@ fi
 here="$(cd "$(dirname "$0")" && pwd)"
 sfx="${BROLL_SFX:-0}"
 mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
-sig="$(mtime "$in_clip")|$(mtime "$plan")|v2|sfx=$sfx"
+sig="$(mtime "$in_clip")|$(mtime "$plan")|v3|sfx=$sfx"
 meta="$out.compmeta"
 if [[ -f "$out" && -f "$meta" && "$(cat "$meta")" == "$sig" ]]; then
   echo "broll-composite: cache hit at $out" >&2
