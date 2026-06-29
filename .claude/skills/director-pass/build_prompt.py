@@ -139,7 +139,7 @@ DURATION: {dur:.1f}s
 SPOKEN SCRIPT (phrase timings approx in CLIP time):
 {script}
 
-CAMERA FRAMING per shot (face = speaker hero-framed, listener = reaction shot, saliency = no-face crop): {shotline or "(none)"}
+CAMERA FRAMING per shot (face = speaker hero-framed, listener = reaction shot, person = framed human with no detectable face, saliency = no-face/no-person crop): {shotline or "(none)"}
 B-ROLL cutaways inserted (window -> search that sourced the footage):
 {brolline or "(none)"}
 CADENCE: {cadline or "(unknown)"}

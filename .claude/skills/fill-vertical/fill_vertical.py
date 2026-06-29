@@ -6,6 +6,10 @@ from mediapipe.tasks.python import vision
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL = os.path.join(HERE, "models", "face_landmarker.task")
+POSE_MODEL = os.path.join(HERE, "models", "pose_landmarker.task")
+
+# pose landmark indices (33-point BlazePose): nose, eyes, shoulders
+NOSE, L_EYE, R_EYE, L_SH, R_SH = 0, 2, 5, 11, 12
 
 # inner-lip + face-extent landmark indices (468/478 mesh)
 UP, LO, TOP, CHIN = 13, 14, 10, 152
@@ -187,6 +191,54 @@ def saliency(imgs, sw, sh, tw, th):
     return even(crop_w), even(crop_h), even(left), even((sh - crop_h) / 2)
 
 
+def poselm():
+    return vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=POSE_MODEL),
+        running_mode=vision.RunningMode.IMAGE, num_poses=1))
+
+
+def person(pl, img):
+    # one prominent person -> normalized {cx, head, top, bot}, or None. Used to
+    # frame a faceless-but-human shot (FaceLandmarker missed it: small / profile
+    # / back-of-head) on the person instead of falling to contrast-saliency.
+    res = pl.detect(mp.Image(image_format=mp.ImageFormat.SRGB,
+                             data=cv2.cvtColor(img, cv2.COLOR_BGR2RGB)))
+    if not res.pose_landmarks:
+        return None
+    lm = res.pose_landmarks[0]
+    vis = [p for p in lm if getattr(p, "visibility", 1.0) >= 0.5]
+    if len(vis) < 6:
+        return None
+    xs = [p.x for p in vis]
+    ys = [p.y for p in vis]
+    top, bot = min(ys), max(ys)
+    if bot - top < 0.12:                         # too small to be a framing subject
+        return None
+
+    def seen(i):
+        return getattr(lm[i], "visibility", 1.0) >= 0.3
+    head = (lm[L_EYE].y + lm[R_EYE].y) / 2 if (seen(L_EYE) and seen(R_EYE)) else lm[NOSE].y
+    cx = (lm[L_SH].x + lm[R_SH].x) / 2 if (seen(L_SH) and seen(R_SH)) else (min(xs) + max(xs)) / 2
+    return {"cx": cx, "head": head, "top": top, "bot": bot}
+
+
+def personbox(p, sw, sh, tw, th, max_zoom, person_frac=0.62):
+    # same geometry as facebox() but sized from the person's vertical extent and
+    # anchored on the head, so the subject reads big with the head on the upper third.
+    ar = tw / th
+    subj_px = max((p["bot"] - p["top"]) * sh, 1.0)
+    crop_h = subj_px / person_frac
+    crop_h = max(crop_h, th / max_zoom)          # upscale cap
+    crop_h = min(crop_h, sh, sw / ar)            # fit source bounds
+    crop_w = crop_h * ar
+    head_y = p["head"] * sh
+    top = head_y - crop_h / 3.0                  # head/eyeline on the upper third
+    left = p["cx"] * sw - crop_w / 2.0
+    top = max(0.0, min(top, sh - crop_h))
+    left = max(0.0, min(left, sw - crop_w))
+    return even(crop_w), even(crop_h), even(left), even(top)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("input")
@@ -246,6 +298,7 @@ def main():
     # non-dominant face that isn't talking is a listener reaction shot -> frame
     # it looser so the short doesn't dwell hero-framed on the wrong person.
     boxes = []
+    pl = None
     for si, (a0, a1, tracks, imgs) in enumerate(shotdata):
         if tracks:
             tr = pick(tracks, dom)
@@ -256,10 +309,26 @@ def main():
             box = facebox(r, sw, sh, tw, th, ff, a.max_zoom)
             kind = "listener" if listener else "face"
         else:
-            box = saliency(imgs, sw, sh, tw, th) if imgs else (
-                even(min(sh, sw * tw / th)), even(min(sh, sw / (tw / th))),
-                even((sw - min(sh, sw * tw / th)) / 2), 0)
-            kind = "saliency"
+            # no face -> try a person (pose) before falling to contrast-saliency,
+            # so action / establishing shots frame the human, not bright scenery.
+            ppl = None
+            if imgs:
+                if pl is None:
+                    pl = poselm()
+                cand = [c for c in (person(pl, im) for im in imgs) if c]
+                if len(cand) >= max(1, (len(imgs) + 2) // 3):   # majority-ish, reject flukes
+                    ppl = {k: float(np.median([c[k] for c in cand]))
+                           for k in ("cx", "head", "top", "bot")}
+            if ppl:
+                box = personbox(ppl, sw, sh, tw, th, a.max_zoom)
+                kind = "person"
+            elif imgs:
+                box = saliency(imgs, sw, sh, tw, th)
+                kind = "saliency"
+            else:
+                box = (even(min(sh, sw * tw / th)), even(min(sh, sw / (tw / th))),
+                       even((sw - min(sh, sw * tw / th)) / 2), 0)
+                kind = "saliency"
         cw, ch, cx, cy = box
         boxes.append({"t0": a0, "t1": a1, "kind": kind,
                       "crop": [cw, ch, cx, cy]})

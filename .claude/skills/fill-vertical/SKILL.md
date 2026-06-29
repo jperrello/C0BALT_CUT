@@ -1,6 +1,6 @@
 ---
 name: fill-vertical
-description: Reframe a horizontal (16:9) clip to 9:16 (1080x1920) by punching in to FILL the frame — never letterbox, no blur bars. Detects scene cuts and computes ONE static crop box per shot. Clusters face signatures across all shots to find the dominant speaker (storyteller); on multi-face shots it picks the speaker by lip-activity biased toward that identity; on no-face shots it crops toward the OpenCV-saliency centroid. A non-speaking reaction/listener shot is framed LOOSER so the short never dwells hero-framed on the wrong person. Faces are framed ~45% of frame height with the eyeline on the upper third, capped at ~2x upscale. Replaces fit-vertical in the canonical chain.
+description: Reframe a horizontal (16:9) clip to 9:16 (1080x1920) by punching in to FILL the frame — never letterbox, no blur bars. Detects scene cuts and computes ONE static crop box per shot. Clusters face signatures across all shots to find the dominant speaker (storyteller); on multi-face shots it picks the speaker by lip-activity biased toward that identity. A non-speaking reaction/listener shot is framed LOOSER so the short never dwells hero-framed on the wrong person. When FaceLandmarker finds no face it falls to a PERSON tier (MediaPipe Pose) — an action/establishing shot with a human is framed on that person (head on the upper third, punched in) instead of stranding them in dead space; only genuinely person-free footage falls through to the OpenCV-saliency cover crop. Faces are framed ~45% of frame height with the eyeline on the upper third, capped at ~2x upscale. Replaces fit-vertical in the canonical chain.
 ---
 
 # fill-vertical
@@ -36,8 +36,13 @@ blurred-letterbox "webinar" look. Runs after `tighten-pace`, before
      biggest + most-central face. Single face → trivial.
    - Crop box: chosen face ~`face_frac` of frame height, eyeline on the upper third,
      centered on the face, clamped to source bounds, capped at `max_zoom`.
-   - **No face →** OpenCV `StaticSaliencyFineGrained`; crop toward the saliency centroid,
-     cover-zoom only (no artificial upscale).
+   - **No face → PERSON tier:** run MediaPipe **Pose** (`pose_landmarker.task`, created
+     lazily — only when a shot has no face). If a prominent person is found (visible
+     across the shot's samples, ≥0.12 of frame tall), frame on them like a face — head
+     on the upper third, sized from the body's vertical extent to ~62% of crop, punched
+     in self-limited by `max_zoom` (`kind="person"`).
+   - **No person →** OpenCV `StaticSaliencyFineGrained`; crop toward the saliency centroid,
+     cover-zoom only (no artificial upscale). True scenery (drone, macro) stays here.
 4. Render each shot (cut → crop → scale → 1080x1920, video only), concat-demuxer join,
    stream-copy the original audio over the whole clip. Encodes via `_lib/encode.sh`
    (respects its VideoToolbox/thread caps — the CPU-brick fix from shorts-xv5).
@@ -54,8 +59,8 @@ blurred-letterbox "webinar" look. Runs after `tighten-pace`, before
 
 ## Deps
 
-`mediapipe`, `opencv-contrib-python`, `numpy` (python3). FaceLandmarker model bundled at
-`models/face_landmarker.task`.
+`mediapipe`, `opencv-contrib-python`, `numpy` (python3). Models bundled under `models/`:
+`face_landmarker.task` (FaceLandmarker) + `pose_landmarker.task` (Pose, person tier).
 
 ## Out of scope
 

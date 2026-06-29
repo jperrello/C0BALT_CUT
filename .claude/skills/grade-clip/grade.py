@@ -391,10 +391,12 @@ def gradeclip(clip, skipclaude, scene):
     f0 = grabframe(clip, 0.0, td, "f0.png")
     fill = loadjson(sc["fill"])
     shot0face = None
+    shot0person = False
     if fill:
         shots = fill.get("shots") or []
         if shots:
             shot0face = (shots[0].get("kind") == "face")
+            shot0person = (shots[0].get("kind") == "person")
 
     framefab = faceframe(f0)
     # frame1_is_face: true if pixel detect says face OR (no detect) fillplan shot0 is face
@@ -407,6 +409,8 @@ def gradeclip(clip, skipclaude, scene):
     facewithheld = (framefab is False) or (shot0face is False)
     if framefab is None and shot0face is None:
         facewithheld = False             # no evidence either way -> don't cap
+    if shot0person and framefab is not True:
+        facewithheld = False             # deliberate human cold open (no face) -> soft, not a hard cap
 
     lb = letterbox(f0)
     credit = creditopen(clip, td)
