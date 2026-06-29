@@ -35,20 +35,24 @@ unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT
 # end-of-run tail folds the log into run_timing.json + _timing.html. No-op when
 # the log is unset, so sourcing here is free.
 source "$(cd "$(dirname "$0")" && pwd)/.claude/skills/_lib/timing.sh"
+# Encoder probe (_shorts_encoder) so the lane/thread budget below can be
+# encoder-aware — VideoToolbox lanes share the fixed HW encoder, x264 lanes
+# genuinely compete for cores.
+source "$(cd "$(dirname "$0")" && pwd)/.claude/skills/_lib/encode.sh"
 
 n="${SHORTS_N:-5}"
 dmin="${SHORTS_DMIN:-28}"
 dmax="${SHORTS_DMAX:-55}"
-max_par="${SHORTS_MAX_PAR:-1}"
-(( max_par < 1 )) && max_par=1
 
-# Divide cores across the spans we run at once and leave one free so the
-# machine stays usable. Each ffmpeg (vt_threads) and whisper run honors these.
+# Core budget: leave one logical CPU free so the machine stays usable. The
+# lane count (max_par) and the per-lane encode budget (SHORTS_THREADS) are
+# resolved AFTER pick-segments sets `count` (the span count doesn't exist yet
+# here), so the multi-lane default can be capped to the actual work. Whisper is
+# phase-1 and serial — nothing else runs alongside it — so it gets the whole
+# budget now.
 ncpu="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 8)"
 budget=$(( ncpu - 1 )); (( budget < 1 )) && budget=1
-per=$(( budget / max_par )); (( per < 1 )) && per=1
-export SHORTS_THREADS="${SHORTS_THREADS:-$per}"
-export SHORTS_WHISPER_THREADS="${SHORTS_WHISPER_THREADS:-$per}"
+export SHORTS_WHISPER_THREADS="${SHORTS_WHISPER_THREADS:-$budget}"
 
 if [[ $# -lt 1 ]]; then
   cat >&2 <<EOF
@@ -356,6 +360,32 @@ fi
 count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["shorts"]))' "$seg_final")"
 log "[phase 1] $count span(s) survived coherence check"
 [[ "$count" -gt 0 ]] || { log "FATAL: no spans survived"; exit 4; }
+
+# ---- lane + encode budget (resolved now that `count` exists) --------------
+# max_par: explicit SHORTS_MAX_PAR wins; otherwise a single-span run stays
+# serial and a multi-span run defaults to 2 overlapping lanes (capped to the
+# work and the core budget).
+if [[ -n "${SHORTS_MAX_PAR:-}" ]]; then
+  max_par="$SHORTS_MAX_PAR"
+elif (( count <= 1 )); then
+  max_par=1
+else
+  max_par=2
+  (( max_par > count )) && max_par=$count
+  (( max_par > budget )) && max_par=$budget
+fi
+(( max_par < 1 )) && max_par=1
+
+# per (SHORTS_THREADS) is encoder-aware: VideoToolbox lanes share the fixed HW
+# encoder so a lone encoder uses all cores and two don't oversubscribe linearly
+# — give each the full budget. x264 software encode genuinely competes for
+# cores, so keep the divide to stay thrash-safe.
+if [[ "$(_shorts_encoder)" == "videotoolbox" ]]; then
+  per=$budget
+else
+  per=$(( budget / max_par )); (( per < 1 )) && per=1
+fi
+export SHORTS_THREADS="${SHORTS_THREADS:-$per}"
 
 # ---- phase 2-4: per-span lanes --------------------------------------------
 # Spans run through max_par lanes. Each lane pulls the next unclaimed span
