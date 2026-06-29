@@ -22,6 +22,10 @@ fi
 [[ -f "$input" ]] || { echo "like-subscribe-overlay: input not found: $input" >&2; exit 2; }
 
 here="$(cd "$(dirname "$0")" && pwd)"
+. "$here/../_lib/encode.sh"
+declare -a venc vthr
+while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args mid)
+while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
 asset="$here/assets/cta.mov"
 if [[ ! -f "$asset" ]]; then
   echo "like-subscribe-overlay: missing $asset — building..." >&2
@@ -30,7 +34,7 @@ if [[ ! -f "$asset" ]]; then
 fi
 
 meta="$out.lsmeta"
-sig="$dur|$pos|mov-v5-first-third-nosfx"
+sig="$dur|$pos|mov-v5-first-third-nosfx|vt"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -90,6 +94,30 @@ ov_y="(H*5/6)-(h/2)"
 asset_chain="setpts=PTS*${sf}+${start}/TB,scale=${cta_w}:-2,format=yuva420p"
 ov="[1:v]${asset_chain}[cta];[0:v][cta]overlay=x='(W-w)/2':y='${ov_y}':enable='between(t,${start},${start}+${dur})':format=auto[v]"
 
+# OVERLAY_PLAN_ONLY: emit a base-relative *.overlay.json (the ProRes asset is
+# already a stable on-disk file) instead of encoding. The fused compositor
+# applies it with the end-card spec in one completion-cluster pass.
+if [[ "${OVERLAY_PLAN_ONLY:-0}" != "0" ]]; then
+  python3 - "$out" "$asset" "$asset_chain" "$ov_y" "$start" "$dur" <<'PY'
+import json, sys
+out, asset, chain, ov_y, start, dur = sys.argv[1:7]
+spec = {
+  "inputs": [{"path": asset}],
+  "filter": (
+    "[{L0}]%s[locta];"
+    "[{IN}][locta]overlay=x='(W-w)/2':y='%s':enable='between(t,%s,%s+%s)':format=auto[{OUT}]"
+    % (chain, ov_y, start, start, dur)
+  ),
+  "audio": None,
+  "quality": "high",
+}
+json.dump(spec, open(out, "w"), indent=2)
+PY
+  printf '%s' "$sig" > "$meta"
+  echo "like-subscribe-overlay: plan-only spec -> $out  start=${start}s dur=${dur}s" >&2
+  echo "$out"; exit 0
+fi
+
 staging="$tmp/$(basename "$out")"
 
 if [[ "$has_audio" == "audio" ]]; then
@@ -97,14 +125,14 @@ if [[ "$has_audio" == "audio" ]]; then
     -i "$input" -i "$asset" \
     -filter_complex "${ov}" \
     -map "[v]" -map 0:a \
-    -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+    "${venc[@]}" "${vthr[@]}" \
     -c:a aac -b:a 192k -movflags +faststart "$staging"
 else
   ffmpeg -y -hide_banner -loglevel error \
     -i "$input" -i "$asset" \
     -filter_complex "${ov}" \
     -map "[v]" \
-    -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+    "${venc[@]}" "${vthr[@]}" \
     -movflags +faststart "$staging"
 fi
 

@@ -54,6 +54,42 @@ dur="$(python3 -c "print(round(min(float('$dur'), max(1.0, float('$vdur') - 0.2)
 start="$(python3 -c "print(round(max(0.0, float('$vdur') - float('$dur') - 0.05), 3))")"
 fade="$(python3 -c "print(round(min(0.4, float('$dur') / 4), 3))")"
 
+ov_y="(H*${yfrac})-(h/2)"
+
+# OVERLAY_PLAN_ONLY: render the end-card PNG to a STABLE sidecar dir and emit a
+# base-relative *.overlay.json instead of encoding. The fused compositor applies
+# it with the CTA spec in one completion-cluster pass.
+if [[ "${OVERLAY_PLAN_ONLY:-0}" != "0" ]]; then
+  assets="${out}.assets"
+  mkdir -p "$assets"
+  if ! python3 "$here/render_endcard.py" "$line1" "$line2" "$assets/endcard.png" "$w" "$h" 2>/dev/null; then
+    echo "end-card: plan-only render failed — emitting no-op spec" >&2
+    python3 - "$out" <<'PY'
+import json, sys
+json.dump({"inputs": [], "filter": "[{IN}]null[{OUT}]", "audio": None, "quality": "high"}, open(sys.argv[1], "w"), indent=2)
+PY
+    printf '%s' "$sig" > "$meta"; echo "$out"; exit 0
+  fi
+  python3 - "$out" "$assets/endcard.png" "$vdur" "$start" "$fade" "$ov_y" <<'PY'
+import json, sys
+out, png, vdur, start, fade, ov_y = sys.argv[1:7]
+spec = {
+  "inputs": [{"path": png, "loop": True, "t": float(vdur)}],
+  "filter": (
+    "[{L0}]format=rgba,fade=t=in:st=%s:d=%s:alpha=1[ecec];"
+    "[{IN}][ecec]overlay=x='(W-w)/2':y='%s':enable='gte(t,%s)':format=auto[{OUT}]"
+    % (start, fade, ov_y, start)
+  ),
+  "audio": None,
+  "quality": "high",
+}
+json.dump(spec, open(out, "w"), indent=2)
+PY
+  printf '%s' "$sig" > "$meta"
+  echo "end-card: plan-only spec -> $out (closing beat last ${dur}s @ y=${yfrac})" >&2
+  echo "$out"; exit 0
+fi
+
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 png="$tmp/endcard.png"
 python3 "$here/render_endcard.py" "$line1" "$line2" "$png" "$w" "$h" 2>/dev/null \
@@ -61,7 +97,6 @@ python3 "$here/render_endcard.py" "$line1" "$line2" "$png" "$w" "$h" 2>/dev/null
 
 has_audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_type \
   -of default=nw=1:nk=1 "$input" 2>/dev/null || true)"
-ov_y="(H*${yfrac})-(h/2)"
 flt="[1:v]format=rgba,fade=t=in:st=${start}:d=${fade}:alpha=1[ec];[0:v][ec]overlay=x='(W-w)/2':y='${ov_y}':enable='gte(t,${start})':format=auto[v]"
 
 declare -a venc thr

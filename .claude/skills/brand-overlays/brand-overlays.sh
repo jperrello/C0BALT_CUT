@@ -52,19 +52,53 @@ read -r w h < <(ffprobe -v error -select_streams v:0 \
 has_audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_type \
   -of default=nw=1:nk=1 "$input" 2>/dev/null || true)"
 
-mkdir -p "$(dirname "$out")"
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
-
-python3 "$here/../source-credit/render_credit.py" "$title" "$tmp/credit.png" "$w" "$h"
-python3 "$here/../watermark/render_watermark.py" "$tmp/mark.png" "$w" "$h"
-
 dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$input")"
 [[ "$dur" =~ ^[0-9.]+$ ]] || dur=600
 
 # Citation appears only in the FINAL `tail` seconds (cstart = dur - tail, floored
 # at 0); watermark bottom-anchored at y≈97.5% for the whole clip.
 cstart="$(awk -v d="$dur" -v t="$tail" 'BEGIN{s=d-t; if(s<0)s=0; printf "%.3f", s}')"
+
+# OVERLAY_PLAN_ONLY: render the PNGs to a STABLE sidecar dir (the compositor
+# reads them later) and emit a base-relative *.overlay.json spec instead of
+# encoding. The fused compositor (_lib/overlay.sh) applies this with the other
+# captions-cluster specs in one pass. Standalone (mode off) still composites.
+if [[ "${OVERLAY_PLAN_ONLY:-0}" != "0" ]]; then
+  assets="${out}.assets"
+  mkdir -p "$assets"
+  python3 "$here/../source-credit/render_credit.py" "$title" "$assets/credit.png" "$w" "$h"
+  python3 "$here/../watermark/render_watermark.py" "$assets/mark.png" "$w" "$h"
+  # {L0}=credit (looped+faded, final tail), {L1}=watermark (full duration).
+  python3 - "$out" "$assets/credit.png" "$assets/mark.png" "$dur" "$cstart" <<'PY'
+import json, sys
+out, credit, mark, dur, cstart = sys.argv[1:6]
+spec = {
+  "inputs": [
+    {"path": credit, "loop": True, "t": float(dur)},
+    {"path": mark, "loop": True, "t": float(dur)},
+  ],
+  "filter": (
+    "[{L0}]fade=t=in:st=%s:d=0.2:alpha=1[bocr];"
+    "[{IN}][bocr]overlay=x='(W-w)/2':y='H*0.04':enable='gte(t,%s)':format=auto[bov1];"
+    "[bov1][{L1}]overlay=x='(W-w)/2':y='H*0.975-h':format=auto[{OUT}]"
+    % (cstart, cstart)
+  ),
+  "audio": None,
+  "quality": "mid",
+}
+json.dump(spec, open(out, "w"), indent=2)
+PY
+  printf '%s' "$sig" > "$meta"
+  echo "brand-overlays: plan-only spec -> $out  title=\"$title\"" >&2
+  echo "$out"; exit 0
+fi
+
+mkdir -p "$(dirname "$out")"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+python3 "$here/../source-credit/render_credit.py" "$title" "$tmp/credit.png" "$w" "$h"
+python3 "$here/../watermark/render_watermark.py" "$tmp/mark.png" "$w" "$h"
 
 # Credit top chyron at y≈4% — fades IN at cstart and holds to the end; watermark
 # bottom-anchored at y≈97.5% for the whole clip. Credit is a looped+faded stream

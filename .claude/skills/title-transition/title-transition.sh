@@ -58,6 +58,41 @@ has_audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_typ
   -of default=nw=1:nk=1 "$input" 2>/dev/null || true)"
 
 fps=30
+
+# OVERLAY_PLAN_ONLY: render the PNG sequence + (optional) SFX wav to a STABLE
+# sidecar dir and emit a base-relative *.overlay.json instead of encoding. The
+# fused compositor applies it with the subtitle + brand specs in one
+# captions-cluster pass and folds the SFX wav into the cluster audio mix.
+if [[ "${OVERLAY_PLAN_ONLY:-0}" != "0" ]]; then
+  assets="${out}.assets"
+  rm -rf "$assets"; mkdir -p "$assets"
+  TITLE_ANCHOR_FRAC="$anchor" python3 "$here/styles.py" "$style" "$title" "$assets" "$w" "$h" "$dur" "$fps"
+  sfx_wav=""
+  if [[ "$sfx_on" != "0" && -f "$assets/events.json" ]]; then
+    if python3 "$here/sfx.py" "$assets/events.json" "$assets/sfx.wav" >&2; then
+      sfx_wav="$assets/sfx.wav"
+    else
+      echo "title-transition: sfx synth failed — continuing silent" >&2
+    fi
+  fi
+  python3 - "$out" "$assets/f_%04d.png" "$fps" "$sfx_wav" <<'PY'
+import json, sys
+out, seqpat, fps, sfx = sys.argv[1:5]
+spec = {
+  "inputs": [{"path": seqpat, "framerate": float(fps)}],
+  # full-frame top-banner PNG seq over the live footage; eof_action=pass so the
+  # base keeps playing once the (short) title seq ends.
+  "filter": "[{IN}][{L0}]overlay=0:0:eof_action=pass:format=auto[{OUT}]",
+  "audio": ({"mix": sfx, "apad": True} if sfx else None),
+  "quality": "mid",
+}
+json.dump(spec, open(out, "w"), indent=2)
+PY
+  printf '%s' "$sig" > "$meta"
+  echo "title-transition: plan-only spec -> $out  style=${style} dur=${dur}s  title=\"$title\"" >&2
+  echo "$out"; exit 0
+fi
+
 mkdir -p "$(dirname "$out")"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

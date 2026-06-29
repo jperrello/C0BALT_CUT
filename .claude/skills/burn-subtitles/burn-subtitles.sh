@@ -45,6 +45,29 @@ read -r w h rate dur < <(ffprobe -v error -select_streams v:0 \
 fps="$(python3 -c "n,d='$rate'.split('/'); print(float(n)/float(d))")"
 nframes="$(python3 -c "import math; print(int(round($dur*$fps)))")"
 
+# OVERLAY_PLAN_ONLY: render the PNG sequence to a STABLE sidecar dir and emit a
+# base-relative *.overlay.json instead of encoding. The fused compositor applies
+# it with the title + brand specs in one captions-cluster pass.
+if [[ "${OVERLAY_PLAN_ONLY:-0}" != "0" ]]; then
+  seq="${out}.assets"
+  rm -rf "$seq"; mkdir -p "$seq"
+  python3 "$here/burn_subtitles.py" "$transcript" "$seq" "$w" "$h" \
+    "$fps" "$nframes" "$style" "$font_size" "$input"
+  python3 - "$out" "$seq/%06d.png" "$fps" <<'PY'
+import json, sys
+out, seqpat, fps = sys.argv[1:4]
+spec = {
+  "inputs": [{"path": seqpat, "framerate": float(fps)}],
+  "filter": "[{IN}][{L0}]overlay=format=auto[{OUT}]",
+  "audio": None,
+  "quality": "mid",
+}
+json.dump(spec, open(out, "w"), indent=2)
+PY
+  echo "burn-subtitles: plan-only spec -> $out  ${w}x${h}  style=$style" >&2
+  echo "$out"; exit 0
+fi
+
 mkdir -p "$(dirname "$out")"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

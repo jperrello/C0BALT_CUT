@@ -39,6 +39,9 @@ source "$(cd "$(dirname "$0")" && pwd)/.claude/skills/_lib/timing.sh"
 # encoder-aware — VideoToolbox lanes share the fixed HW encoder, x264 lanes
 # genuinely compete for cores.
 source "$(cd "$(dirname "$0")" && pwd)/.claude/skills/_lib/encode.sh"
+# Overlay compositor (compose_overlays) — fuses each overlay cluster's
+# OVERLAY_PLAN_ONLY specs into ONE ffmpeg pass (the 6-encode -> 2-encode lever).
+source "$(cd "$(dirname "$0")" && pwd)/.claude/skills/_lib/overlay.sh"
 
 n="${SHORTS_N:-5}"
 dmin="${SHORTS_DMIN:-28}"
@@ -120,6 +123,47 @@ root="$(cd "$(dirname "$0")" && pwd)"
 cd "$root"
 skill() { echo "$root/.claude/skills/$1/$1.sh"; }
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
+
+# Cluster-level idempotency signature for a fused compose pass: base mtime |
+# quality | each spec's mtime. Same idiom as the per-skill .*meta — a re-run
+# with an unchanged base + specs skips the fused encode.
+_mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+_cmpsig() {
+  local base="$1" q="$2"; shift 2
+  local sig; sig="$(_mtime "$base")|$q"
+  local s
+  for s in "$@"; do sig="$sig|$(_mtime "$s")"; done
+  printf '%s' "$sig"
+}
+
+# Serial fallback for the captions overlay cluster: if the fused compose pass
+# fails, fall back to the original burn-subtitles -> title-transition ->
+# brand-overlays serial encodes (each skill's standalone apply path), so a
+# compositor edge case never strands a span. Returns the final `marked` clip.
+_overlay_serial_captions() {
+  local idx="$1" base="$2" chunks="$3" title="$4" ingest="$5" marked="$6"
+  local sub="$dir/clip_${idx}.sub.mp4"
+  local titled="$dir/clip_${idx}.titled.mp4"
+  bash "$(skill burn-subtitles)" "$base" "$chunks" "$sub" chunks >/dev/null || return 1
+  bash "$(skill title-transition)" "$sub" "$title" "$titled" >/dev/null || return 1
+  if ! bash "$(skill brand-overlays)" "$titled" "$ingest" "$marked" >/dev/null; then
+    local credited="$dir/clip_${idx}.credited.mp4"
+    bash "$(skill source-credit)" "$titled" "$ingest" "$credited" >/dev/null || cp "$titled" "$credited"
+    bash "$(skill watermark)" "$credited" "$marked" >/dev/null || cp "$credited" "$marked"
+  fi
+  return 0
+}
+
+# Serial fallback for the completion overlay cluster: like-subscribe-overlay ->
+# end-card (each skill's standalone apply path). bg-music already ran (audio
+# bed, video copy) before this, so it is not part of the fallback.
+_overlay_serial_completion() {
+  local idx="$1" base="$2" out="$3"
+  local ctaed="$dir/clip_${idx}.ctaed.mp4"
+  bash "$(skill like-subscribe-overlay)" "$base" "$ctaed" 4.0 >/dev/null || cp "$base" "$ctaed"
+  bash "$(skill end-card)" "$ctaed" "$out" >/dev/null || cp "$ctaed" "$out"
+  return 0
+}
 
 youtube() {
   local val="$1"
@@ -685,21 +729,17 @@ run_phase3_captions() {
     fi
   fi
 
-  log "[phase 3 / span $idx / captions] burn-subtitles"
-  local sub="$dir/clip_${idx}.sub.mp4"
-  timed burn-subtitles ffmpeg -- bash "$(skill burn-subtitles)" "$brolled" "$chunks" "$sub" chunks >/dev/null || {
-    log "[phase 3 / span $idx / captions] burn-subtitles FAILED"
-    echo "burn-subtitles" > "$dir/clip_${idx}.fail.captions"; return 1
-  }
-
-  # sfx-beats comedy: meme SFX (vine boom / record scratch / ding) on
-  # Claude-marked punchline/irony/insight beats (SFX_COMEDY=0 skips)
+  # sfx-beats comedy: meme SFX (vine boom / record scratch) on Claude-marked
+  # punchline/irony beats. Audio-only (video stream-copied), so it runs on the
+  # pre-overlay clip and its mixed audio rides through the fused compose pass
+  # below (which copies audio when no spec carries an audio mix, or amix's it
+  # with the title SFX when one does). SFX_COMEDY=0 skips.
   local sfxed="$dir/clip_${idx}.sfx.mp4"
   if [[ "${SFX_COMEDY:-1}" != "0" ]]; then
     log "[phase 3 / span $idx / captions] sfx-beats (comedy)"
-    timed sfx-beats claude -- bash "$(skill sfx-beats)" "$sub" "$ctx" "$sfxed" comedy --pane "$cp_pane" >/dev/null || cp "$sub" "$sfxed"
+    timed sfx-beats claude -- bash "$(skill sfx-beats)" "$brolled" "$ctx" "$sfxed" comedy --pane "$cp_pane" >/dev/null || cp "$brolled" "$sfxed"
   else
-    sfxed="$sub"
+    sfxed="$brolled"
   fi
 
   log "[phase 3 / span $idx / captions] generate-title"
@@ -711,24 +751,49 @@ run_phase3_captions() {
   local title; title="$(cat "$title_file")"
   log "[phase 3 / span $idx / captions] title=\"$title\""
 
-  # one channel title animation (glitch) on every short — no per-span style.
-  log "[phase 3 / span $idx / captions] title-transition"
-  local titled="$dir/clip_${idx}.titled.mp4"
-  timed title-transition ffmpeg -- bash "$(skill title-transition)" "$sfxed" "$title" "$titled" >/dev/null || {
-    log "[phase 3 / span $idx / captions] title-transition FAILED"
-    echo "title-transition" > "$dir/clip_${idx}.fail.captions"; return 1
-  }
-
-  # credit + watermark are both static full-duration PNG overlays — one
-  # filtergraph pass instead of two re-encodes (shorts-6sp). Fallback: the
-  # original two-pass path, then unbranded copy.
-  log "[phase 3 / span $idx / captions] brand-overlays (credit + watermark)"
+  # FUSED CAPTIONS OVERLAY PASS (shorts: 6 overlay encodes -> 2). burn-subtitles,
+  # title-transition (single channel glitch style), and brand-overlays each run
+  # in OVERLAY_PLAN_ONLY mode — they render their PNG seq / banner PNGs to stable
+  # sidecar dirs and emit a base-relative *.overlay.json instead of re-encoding —
+  # then ONE compose_overlays pass chains all three filtergraphs onto $sfxed at
+  # `mid` quality. title-transition's style SFX wav folds into the cluster audio
+  # mix. A .cmpmeta over base+spec mtimes skips the fused encode on an unchanged
+  # re-run. Each skill stays independently invocable (standalone = its own encode).
+  local sub_spec="$dir/clip_${idx}.sub.overlay.json"
+  local title_spec="$dir/clip_${idx}.title.overlay.json"
+  local brand_spec="$dir/clip_${idx}.brand.overlay.json"
   local marked="$dir/clip_${idx}.marked.mp4"
-  if ! timed brand-overlays ffmpeg -- bash "$(skill brand-overlays)" "$titled" "$ingest_json" "$marked" >/dev/null; then
-    log "[phase 3 / span $idx / captions] brand-overlays FAILED — two-pass fallback"
-    local credited="$dir/clip_${idx}.credited.mp4"
-    bash "$(skill source-credit)" "$titled" "$ingest_json" "$credited" >/dev/null || cp "$titled" "$credited"
-    bash "$(skill watermark)" "$credited" "$marked" >/dev/null || cp "$credited" "$marked"
+
+  log "[phase 3 / span $idx / captions] overlay plans (burn-subtitles / title-transition / brand-overlays)"
+  if ! OVERLAY_PLAN_ONLY=1 bash "$(skill burn-subtitles)" "$sfxed" "$chunks" "$sub_spec" chunks >/dev/null; then
+    log "[phase 3 / span $idx / captions] burn-subtitles plan FAILED"
+    echo "burn-subtitles" > "$dir/clip_${idx}.fail.captions"; return 1
+  fi
+  if ! OVERLAY_PLAN_ONLY=1 bash "$(skill title-transition)" "$sfxed" "$title" "$title_spec" >/dev/null; then
+    log "[phase 3 / span $idx / captions] title-transition plan FAILED"
+    echo "title-transition" > "$dir/clip_${idx}.fail.captions"; return 1
+  fi
+  OVERLAY_PLAN_ONLY=1 bash "$(skill brand-overlays)" "$sfxed" "$ingest_json" "$brand_spec" >/dev/null \
+    || log "[phase 3 / span $idx / captions] brand-overlays plan failed — composing without it"
+
+  # Cluster idempotency: skip the fused encode when the base + every spec is
+  # unchanged (same idiom as the per-skill .*meta).
+  local cmpmeta="$marked.cmpmeta"
+  local cmpsig
+  cmpsig="$(_cmpsig "$sfxed" mid "$sub_spec" "$title_spec" "$brand_spec")"
+  if [[ -f "$marked" && -f "$cmpmeta" && "$marked" -nt "$sfxed" && "$(cat "$cmpmeta")" == "$cmpsig" ]]; then
+    log "[phase 3 / span $idx / captions] overlay-compose-A cache hit"
+  else
+    log "[phase 3 / span $idx / captions] overlay-compose-A (fused: subtitles + title + brand)"
+    local -a aspecs=("$sub_spec" "$title_spec")
+    [[ -f "$brand_spec" ]] && aspecs+=("$brand_spec")
+    if ! timed overlay-compose-A ffmpeg -- compose_overlays "$sfxed" "$marked" mid "${aspecs[@]}" >/dev/null; then
+      log "[phase 3 / span $idx / captions] overlay-compose-A FAILED — serial fallback"
+      if ! _overlay_serial_captions "$idx" "$sfxed" "$chunks" "$title" "$ingest_json" "$marked"; then
+        echo "overlay-compose-A" > "$dir/clip_${idx}.fail.captions"; return 1
+      fi
+    fi
+    printf '%s' "$cmpsig" > "$cmpmeta"
   fi
 
   log "[phase 3 / span $idx / captions] loudnorm"
@@ -765,23 +830,56 @@ run_phase4() {
   local leveled; leveled="$(cat "$dir/clip_${idx}.leveled.path")"
   local ctx;  ctx="$(cat "$dir/clip_${idx}.ctx.path")"
 
-  log "[phase 4 / span $idx] like-subscribe-overlay"
-  local ctaed="$dir/clip_${idx}.ctaed.mp4"
-  timed like-subscribe-overlay ffmpeg -- bash "$(skill like-subscribe-overlay)" "$leveled" "$ctaed" 4.0 >/dev/null || cp "$leveled" "$ctaed"
-
+  # bg-music runs FIRST in this cluster: it is audio-only (video stream-copied),
+  # so laying the bed down here lets the fused completion overlay pass below
+  # composite the CTA + end-card on the bedded clip and stream-copy the audio
+  # through — same delivered audio as the old CTA -> bg-music -> end-card order,
+  # one fewer full overlay re-encode.
   log "[phase 4 / span $idx] pick-mood + bg-music"
   local mood_file="$dir/clip_${idx}.mood.txt"
   timed pick-mood claude -- bash "$(skill pick-mood)" "$ctx" "$mood_file" --pane "$cm" >/dev/null || echo "ALL SONGS" > "$mood_file"
   local mood; mood="$(cat "$mood_file")"
-  local final="$dir/clip_${idx}.final.mp4"
-  timed bg-music ffmpeg -- bash "$(skill bg-music)" "$ctaed" "$final" "$mood" >/dev/null || cp "$ctaed" "$final"
+  local bedded="$dir/clip_${idx}.final.mp4"
+  timed bg-music ffmpeg -- bash "$(skill bg-music)" "$leveled" "$bedded" "$mood" >/dev/null || cp "$leveled" "$bedded"
 
-  # end-card: closing CTA beat over the last ~2.5s so the short lands on an
-  # intentional "FOLLOW FOR MORE" instead of dead-stopping (END_CARD=0 skips).
-  log "[phase 4 / span $idx] end-card"
-  local ended="$dir/clip_${idx}.ended.mp4"
-  timed end-card ffmpeg -- bash "$(skill end-card)" "$final" "$ended" >/dev/null || cp "$final" "$ended"
-  final="$ended"
+  # FUSED COMPLETION OVERLAY PASS (CTA + end-card -> ONE encode). Both run in
+  # OVERLAY_PLAN_ONLY mode (emit a base-relative *.overlay.json over stable
+  # assets, skip their own encode) and one compose_overlays pass chains them onto
+  # the bg-music'd clip at `high` quality. .cmpmeta skips an unchanged re-run;
+  # each skill stays independently invocable. END_CARD=0 still drops the card.
+  local cta_spec="$dir/clip_${idx}.cta.overlay.json"
+  local ec_spec="$dir/clip_${idx}.endcard.overlay.json"
+  local final="$dir/clip_${idx}.ended.mp4"
+
+  log "[phase 4 / span $idx] overlay plans (like-subscribe-overlay / end-card)"
+  OVERLAY_PLAN_ONLY=1 bash "$(skill like-subscribe-overlay)" "$bedded" "$cta_spec" 4.0 >/dev/null \
+    || log "[phase 4 / span $idx] like-subscribe-overlay plan failed — composing without it"
+  local -a bspecs=()
+  [[ -f "$cta_spec" ]] && bspecs+=("$cta_spec")
+  if [[ "${END_CARD:-1}" != "0" ]]; then
+    OVERLAY_PLAN_ONLY=1 bash "$(skill end-card)" "$bedded" "$ec_spec" >/dev/null \
+      && bspecs+=("$ec_spec") \
+      || log "[phase 4 / span $idx] end-card plan failed — composing without it"
+  fi
+
+  if [[ ${#bspecs[@]} -eq 0 ]]; then
+    log "[phase 4 / span $idx] no completion overlays — passthrough"
+    cp "$bedded" "$final"
+  else
+    local cmpmetaB="$final.cmpmeta"
+    local cmpsigB
+    cmpsigB="$(_cmpsig "$bedded" high "${bspecs[@]}")"
+    if [[ -f "$final" && -f "$cmpmetaB" && "$final" -nt "$bedded" && "$(cat "$cmpmetaB")" == "$cmpsigB" ]]; then
+      log "[phase 4 / span $idx] overlay-compose-B cache hit"
+    else
+      log "[phase 4 / span $idx] overlay-compose-B (fused: CTA + end-card)"
+      if ! timed overlay-compose-B ffmpeg -- compose_overlays "$bedded" "$final" high "${bspecs[@]}" >/dev/null; then
+        log "[phase 4 / span $idx] overlay-compose-B FAILED — serial fallback"
+        _overlay_serial_completion "$idx" "$bedded" "$final" || cp "$bedded" "$final"
+      fi
+      printf '%s' "$cmpsigB" > "$cmpmetaB"
+    fi
+  fi
 
   # speed-up: final global retime (SPEED=1.25x) — the last edit step. Keeps every
   # relative beat in sync; qc/cadence/save below run on the delivered clip.
