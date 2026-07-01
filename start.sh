@@ -339,6 +339,7 @@ src="$dir/source.mp4"
 tx="$dir/transcript.json"
 ingest_json="$dir/ingest.json"
 topics="$dir/topics.json"
+thesis="$dir/thesis.json"
 seg_raw="$dir/segments.raw.json"
 seg_coh="$dir/segments.coherent.json"
 seg_final="$dir/segments.json"
@@ -387,6 +388,8 @@ pane_new "$an" claude
 export SHORTS_TL_PHASE=analysis
 log "[phase 1 / analysis] segment-topics"
 timed segment-topics claude -- bash "$(skill segment-topics)" "$tx" "$topics" --pane "$an" || { log "FATAL: segment-topics"; exit 3; }
+log "[phase 1 / analysis] derive-thesis"
+timed derive-thesis claude -- bash "$(skill derive-thesis)" "$tx" "$topics" "$thesis" --pane "$an" || log "WARN: derive-thesis failed (non-fatal; picking theme-blind)"
 log "[phase 1 / analysis] pick-segments"
 timed pick-segments claude -- bash "$(skill pick-segments)" "$tx" "$seg_raw" "$n" "$dmin" "$dmax" "$topics" --pane "$an" || { log "FATAL: pick-segments"; exit 3; }
 log "[phase 1 / analysis] verify-coherence"

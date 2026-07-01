@@ -6,10 +6,16 @@ reply_path, n, dmin, dmax, transcript_path = sys.argv[1:6]
 topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
 heatmap_path = sys.argv[7] if len(sys.argv) > 7 else ""
 hint_path = sys.argv[8] if len(sys.argv) > 8 else ""
+thesis_path = sys.argv[9] if len(sys.argv) > 9 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
 
 # seconds the turn/payoff is allowed to take before we start penalizing.
 PAYOFF_BUDGET = float(os.environ.get("PAYOFF_BUDGET_SEC", "3.0"))
+# theme_fit weight: how hard on-spine picks out-rank off-spine tangents. Applied
+# as (theme_fit - 5) * THEME_WEIGHT, so a neutral 5 is 0, a 10 adds +THEME_WEIGHT*5
+# and a 0 subtracts the same. Default 1.4 => a +-7 rank swing across the 0-99
+# scale. No-op when no thesis is present (theme_fit defaults to a neutral 5).
+THEME_WEIGHT = float(os.environ.get("THEME_WEIGHT", "1.4"))
 # confidence-floor backfill: rlm candidates at/above this confidence are
 # guaranteed representation in the final picks (see backfill block below).
 CONF_FLOOR = float(os.environ.get("PICK_CONF_FLOOR", "0.85"))
@@ -47,6 +53,27 @@ if topics_path:
         topics = json.load(open(topics_path)).get("topics", [])
     except FileNotFoundError:
         topics = []
+
+# source subject/spine (from derive-thesis) — used ONLY to gate the deterministic
+# confidence-floor backfill: a high-standalone candidate can still be an off-spine
+# tangent, and the backfill re-injects it WITHOUT a Claude theme_fit read, so we
+# check cheap lexical overlap against the spine vocabulary. Empty => no gate.
+_STOP = {"this","that","with","from","have","what","when","which","about","would",
+         "there","their","they","them","then","than","into","your","just","like",
+         "will","because","were","been","being","does","doesnt","dont","cant",
+         "really","actually","something","someone","people","thing","things"}
+def _toks(s):
+    return {w for w in re.findall(r"[a-z]{4,}", str(s).lower()) if w not in _STOP}
+THEME_TOKENS = set()
+if thesis_path:
+    try:
+        _th = json.load(open(thesis_path))
+        THEME_TOKENS |= _toks(_th.get("subject", ""))
+        THEME_TOKENS |= _toks(_th.get("thesis_sentence", ""))
+        for _t in (_th.get("key_threads") or []):
+            THEME_TOKENS |= _toks(_t)
+    except (FileNotFoundError, ValueError):
+        THEME_TOKENS = set()
 
 def topic_of(t0, t1):
     # full containment (cheap path)
@@ -110,7 +137,13 @@ def starts_with_filler(t0):
     return False
 
 shorts = []
+# each entry is a chosen span's actual cut-range list ([[a,b],...]), NOT its
+# [t0,t1] envelope: a multi-cut thread span's envelope can span almost the whole
+# source (setup near the start, payoff near the end), and an envelope-based
+# overlap test would then mark EVERY later span as overlapping and drop it.
 seen = []
+def cuts_overlap(ca, cb):
+    return any(not (b1 <= a2 or a1 >= b2) for a1, b1 in ca for a2, b2 in cb)
 def norm_cuts(sh):
     # validate/normalize the cuts list: in-bounds, ordered, non-overlapping.
     # falls back to a single [t0,t1] cut when cuts are missing/unusable.
@@ -161,7 +194,10 @@ def score99(item):
     # open-loop bonus: question/provocation hooks create the curiosity gap that
     # stops a scroll; reward them over a flat claim.
     openloop = OPENLOOP.get(item["hook_type"], 0.0)
-    s = base - penalty + openloop
+    # theme fit: reward on-spine picks, penalize off-spine tangents symmetrically
+    # around a neutral 5. No-op when theme-blind (theme_fit defaults to 5).
+    theme = (item.get("theme_fit", 5.0) - 5.0) * THEME_WEIGHT
+    s = base - penalty + openloop + theme
     return max(0.0, min(99.0, s))
 
 
@@ -201,7 +237,7 @@ for sh in data.get("shorts", []):
     dur = sum(b - a for a, b in cuts)   # final runtime = sum of cut lengths
     if dur < dmin - 0.5 or dur > dmax + 0.5:
         continue
-    if any(not (t1 <= a or t0 >= b) for a, b in seen):
+    if any(cuts_overlap(cuts, sc) for sc in seen):
         continue
     # A cross-chunk THREAD span (shorts-8la) is the sanctioned exception to the
     # single-topic rule: a deliberate setup->payoff/callback/contradiction stitch
@@ -215,7 +251,7 @@ for sh in data.get("shorts", []):
     if starts_with_filler(t0):
         print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (filler/fragment opening)", file=sys.stderr)
         continue
-    seen.append((t0, t1))
+    seen.append(cuts)
     span_len = sum(b - a for a, b in cuts)
     offset = float(sh.get("payoff_offset_sec", 0) or 0)
     offset = max(0.0, min(span_len, offset))   # clamp into the delivered window
@@ -242,6 +278,8 @@ for sh in data.get("shorts", []):
         # NEW sub-scores surfaced for the grader/verifier downstream.
         "hook_payoff_coherence": float(sh.get("hook_payoff_coherence", 0) or 0),
         "payoff_offset_sec": round(offset, 2),
+        # on-spine fit vs the source subject (derive-thesis). 5 = neutral/theme-blind.
+        "theme_fit": max(0.0, min(10.0, float(sh.get("theme_fit", 5) or 5))),
     }
     if tp is not None:
         item["topic"] = tp.get("title", "")
@@ -285,8 +323,8 @@ def conf_score(conf):
     frac = (conf - CONF_FLOOR) / max(1e-6, 1.0 - CONF_FLOOR)
     return round(60.0 + max(0.0, min(1.0, frac)) * 22.0, 2)
 
-def overlaps_seen(a, b):
-    return any(not (b <= x or a >= y) for x, y in seen)
+def overlaps_seen(cs):
+    return any(cuts_overlap(cs, sc) for sc in seen)
 
 def expand_arc(a, b, tp):
     # grow a short candidate window into a >=BACKFILL_MIN setup->payoff arc:
@@ -332,12 +370,25 @@ for c in cands:
     dur = sum(y - x for x, y in cuts)
     if dur < BACKFILL_MIN - 0.5 or dur > dmax + 0.5:
         continue
-    if overlaps_seen(t0, t1):              # a chosen span already covers it
+    if overlaps_seen(cuts):                 # a chosen span already covers it
         continue
     tp = topic_of(t0, t1) if topics else None
     if topics and tp is None and not is_thread:
         continue
-    seen.append((t0, t1))
+    # off-spine backfill gate: the backfill guarantees representation to a
+    # high-STANDALONE candidate, but standalone-worthiness is not on-theme-ness —
+    # that is how the beetle/DoorDash tangents got auto-injected (shorts-ix43).
+    # When a thesis is present, refuse to re-inject a candidate that shares NO
+    # vocabulary with the source spine unless it is near-certain (conf >= 0.95).
+    cand_toks = _toks(c.get("quote", "")) | _toks(c.get("why", ""))
+    if tp is not None:
+        cand_toks |= _toks(tp.get("title", ""))
+    on_theme = bool(THEME_TOKENS) and bool(cand_toks & THEME_TOKENS)
+    if THEME_TOKENS and not on_theme and conf < 0.95:
+        print(f"pick-segments: skipping off-spine backfill {t0:.1f}-{t1:.1f} "
+              f"(no theme overlap, conf {conf:.2f})", file=sys.stderr)
+        continue
+    seen.append(cuts)
     sc = conf_score(conf)
     item = {
         "t0": round(t0, 2),
@@ -355,6 +406,9 @@ for c in cands:
         "structure_score": round(conf * 10.0, 1),
         "hook_payoff_coherence": round(conf * 10.0, 1),
         "payoff_offset_sec": 0.0,
+        # synthetic theme_fit for audit (no Claude read on the backfill path):
+        # on-spine overlap -> 7, else neutral 5. Theme-blind runs stay 5.
+        "theme_fit": 7.0 if on_theme else 5.0,
         "overall_score": sc,
         "backfilled": True,
         "confidence": round(conf, 2),

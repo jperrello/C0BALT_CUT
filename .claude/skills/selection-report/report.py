@@ -27,6 +27,7 @@ dest_dir = os.path.join(output_root, slug)
 raw = load(os.path.join(work_dir, "segments.raw.json"), {}).get("shorts", [])
 hint = load(os.path.join(work_dir, "candidates.hint.json"), {}).get("candidates", [])
 topics = load(os.path.join(work_dir, "topics.json"), {}).get("topics", [])
+thesis = load(os.path.join(work_dir, "thesis.json"), {})
 
 def shipped_name(i):
     p = os.path.join(work_dir, f"clip_{i + 1:02d}.done.completion")
@@ -37,7 +38,7 @@ def shipped_name(i):
         return None
 
 SCORE_FIELDS = ("overall_score", "hook_score", "context_score", "structure_score",
-                "hook_payoff_coherence", "payoff_offset_sec", "replay_quotient")
+                "hook_payoff_coherence", "payoff_offset_sec", "theme_fit", "replay_quotient")
 
 shipped = []
 shipped_cuts = []   # (name, [[a,b],...]) for overlap marking
@@ -95,6 +96,7 @@ report = {
     "url": ingest.get("url", ""),
     "slug": slug,
     "duration_sec": ingest.get("duration"),
+    "thesis": thesis,
     "shipped_count": len(shipped),
     "considered_count": len(considered),
     "considered_picked": sum(1 for c in considered if c["picked"]),

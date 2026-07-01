@@ -31,6 +31,12 @@ hm_cand="$(dirname "$transcript")/heatmap.json"
 hint=""
 hint_cand="$(dirname "$transcript")/candidates.hint.json"
 [[ -f "$hint_cand" ]] && hint="$hint_cand"
+# source subject/spine (from derive-thesis) — theme prior: pick-segments scores
+# each pick's theme_fit against it and gates off-spine backfills. Absent => the
+# picker runs theme-blind exactly as before.
+thesis=""
+thesis_cand="$(dirname "$transcript")/thesis.json"
+[[ -f "$thesis_cand" ]] && thesis="$thesis_cand"
 if [[ ! -f "$transcript" ]]; then
   echo "pick-segments: transcript not found: $transcript" >&2
   exit 2
@@ -56,6 +62,10 @@ if [[ -f "$out" ]]; then
     ht_mtime="$(stat -f %m "$hint" 2>/dev/null || stat -c %Y "$hint")"
     [[ "$ht_mtime" -gt "$in_mtime" ]] && in_mtime="$ht_mtime"
   fi
+  if [[ -n "$thesis" ]]; then
+    th_mtime="$(stat -f %m "$thesis" 2>/dev/null || stat -c %Y "$thesis")"
+    [[ "$th_mtime" -gt "$in_mtime" ]] && in_mtime="$th_mtime"
+  fi
   out_mtime="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
   if [[ "$out_mtime" -ge "$in_mtime" ]]; then
     echo "pick-segments: cache hit at $out" >&2
@@ -76,7 +86,7 @@ else
 fi
 
 prompt_file="$tmp/prompt.txt"
-python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" "${topics:-}" "${heatmap:-}" "${hint:-}" > "$prompt_file"
+python3 "$here/build_prompt.py" "$transcript" "$rms_json" "$n" "$dmin" "$dmax" "${topics:-}" "${heatmap:-}" "${hint:-}" "${thesis:-}" > "$prompt_file"
 
 reply="$tmp/reply.txt"
 run_claude_step pick-segments "$prompt_file" "$reply" 2>"$tmp/claude.err" || {
@@ -85,6 +95,6 @@ run_claude_step pick-segments "$prompt_file" "$reply" 2>"$tmp/claude.err" || {
   exit 1
 }
 
-python3 "$here/parse_reply.py" "$reply" "$n" "$dmin" "$dmax" "$transcript" "${topics:-}" "${heatmap:-}" "${hint:-}" > "$out"
+python3 "$here/parse_reply.py" "$reply" "$n" "$dmin" "$dmax" "$transcript" "${topics:-}" "${heatmap:-}" "${hint:-}" "${thesis:-}" > "$out"
 echo "pick-segments: wrote $out" >&2
 echo "$out"

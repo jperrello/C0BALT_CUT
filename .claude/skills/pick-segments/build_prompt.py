@@ -18,6 +18,7 @@ transcript_path, rms_path, n, dmin, dmax = sys.argv[1:6]
 topics_path = sys.argv[6] if len(sys.argv) > 6 else ""
 heatmap_path = sys.argv[7] if len(sys.argv) > 7 else ""
 hint_path = sys.argv[8] if len(sys.argv) > 8 else ""
+thesis_path = sys.argv[9] if len(sys.argv) > 9 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
 
 tx = json.load(open(transcript_path))
@@ -148,6 +149,29 @@ CROSS-CHUNK THREADS (rlm discovery hint — a setup in one part of the video tha
 A thread is the ONE case where a short MAY cross topic boundaries. If a thread above is genuinely compelling as a standalone story, you may pick it: provide its ordered cuts (≤3, source-chronological, summing to {dmin:.0f}-{dmax:.0f}s), set "thread": true, AND set "thread_kind" to that thread's kind (setup_payoff | callback | escalation | contradiction) so it bypasses the single-topic constraint. Only do this for a REAL narrative stitch the cuts make coherent — never to glue two loosely-related moments. Most picks are still single-topic; treat threads as rare, high-value exceptions.
 """
 
+# source subject/spine (from derive-thesis) — the theme prior. A 2h talk is
+# mostly ON-SPINE material plus entertaining tangents; without this the picker
+# maximizes standalone virality and ships clip-shaped asides that misrepresent
+# the source (shorts-ix43). Absent => no block, picker runs theme-blind as before.
+theme_block = ""
+if thesis_path:
+    try:
+        thesis = json.load(open(thesis_path))
+    except (FileNotFoundError, ValueError):
+        thesis = {}
+    subject = str(thesis.get("subject", "")).strip()
+    if subject:
+        sentence = (f"\n  throughline: {str(thesis['thesis_sentence']).strip()}"
+                    if str(thesis.get("thesis_sentence", "")).strip() else "")
+        threads = [str(x).strip() for x in (thesis.get("key_threads") or []) if str(x).strip()]
+        tline = ("\n  on-spine sub-themes: " + "; ".join(threads)) if threads else ""
+        theme_block = f"""
+SOURCE SUBJECT — the SPINE of the whole video (highest-level selection prior):
+  subject: {subject}{sentence}{tline}
+
+This source wanders through many chapters, but most viewers came for its SPINE. A short that ADVANCES or ILLUSTRATES the subject above represents the episode; an entertaining but OFF-SPINE tangent (a random anecdote with nothing to do with the subject) makes a clip-shaped short that misrepresents the source — this is the exact failure we are fixing. STRONGLY PREFER on-spine moments. An off-spine tangent must be a genuinely irresistible standalone story to earn a pick over an on-spine moment, and never fill more than ONE of your {n} picks. Score each pick's theme_fit honestly (below); the deterministic ranker down-weights off-spine picks.
+"""
+
 if topics:
     topic_block = "\n".join(
         f"  topic {i+1} [{t['t0']:.1f}-{t['t1']:.1f}] {t.get('title','')}: {t.get('summary','')}"
@@ -170,7 +194,7 @@ Audio energy (per ~1s of source, bucketed to ~60 bins, ▁ low → █ high):
 {replay_block}
 Transcript (timestamped lines, seconds):
 {transcript_block}
-{topic_rules}{hint_block}
+{theme_block}{topic_rules}{hint_block}
 Pick {n} non-overlapping shorts, each {dmin:.0f}-{dmax:.0f} seconds of SOURCE story selected, that would work as standalone shorts. Avoid mid-sentence cuts.
 
 SELECTION BUDGET vs DELIVERED LENGTH (read this): the {dmin:.0f}-{dmax:.0f}s window is how much SOURCE story you select — NOT the final runtime. After you pick, downstream editing (filler removal + pace tightening) shaves roughly 20-30% of the dead air and trail-offs. So select the FULLER arc — include the complete setup and the landing — and trust the editor to tighten it into the ~30-40s sweet spot. Do NOT pre-trim the arc to hit a short target; an arc that already feels minimal at selection will land truncated after tightening.
@@ -202,6 +226,7 @@ PREFER spans whose literal first sentence is already one of these; use QUESTION-
   - structure_score (0-10): does the span have hook → foreshadow → payoff → landing, with but/therefore causality between beats (not just "and then")? Does it open a curiosity loop that resolves by the end?
   - hook_payoff_coherence (0-10): does the cold-open hook ACTUALLY pay off inside this span? A 10 means the opening question/provocation/claim is directly answered, resolved, or delivered on by the turn and landing. Score LOW when the open is bait that never lands — a juicy first line whose promise the rest of the span never honors, or a turn about something other than what the hook set up. This is the anti-clickbait term: reward openings whose curiosity loop closes; punish bait-and-switch.
   - payoff_offset_sec (0..span_len): seconds from the DELIVERED span start to the exact line where the turn/insight/payoff lands (the moment the curiosity loop starts resolving). 0 means the very first sentence is already the turn. THE TURN MUST LAND WITHIN ~3s OF THE DELIVERED OPEN — a payoff that lands 10s in is a setup-heavy bait-opener that loses the cold viewer before the reward. If the natural payoff is late but strong, use QUESTION-LEAD ASSEMBLY (above) to pull a short setup-question cut to the front so payoff_offset_sec stays small. Measure honestly against the cuts you chose: it is the offset within the assembled, delivered short, not the raw source.
+  - theme_fit (0-10): does THIS moment advance or illustrate the SOURCE SUBJECT above? 10 = squarely on the spine (a core-theme insight or its best illustration); 5 = tangentially related; 0 = an entertaining but off-spine tangent with nothing to do with the subject. If NO SOURCE SUBJECT was given above, score 5 for every pick.
   - overall_score (0-10): your holistic rank — would you stop scrolling AND watch to the end? Weigh complete standalone meaning first, then cold-open hook strength (PREFER open-loop question/provocation hooks over flat claims), then how fast the payoff lands, then vocal energy/affect, concrete stakes, RMS peaks, and replay peaks. RMS/replay can break ties but cannot rescue a confusing, abrupt, or slow-to-pay-off clip. (Note: the deterministic ranker recomputes the final 0-99 rank from your sub-scores — including hook_payoff_coherence and payoff_offset_sec — so rate every field honestly rather than gaming overall_score.)
 Also report, for each pick:
   - opening_line: the verbatim first ~8-12 words a viewer hears (after any question-lead assembly).
@@ -212,4 +237,4 @@ HARD REJECT — do NOT pick spans whose first transcript word is filler:
 Trim the span start forward to a stronger opening word if needed (still respect {dmin:.0f}s minimum).
 
 Reply with ONLY a JSON object (no prose, no code fences):
-{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "thread": <true ONLY for a cross-chunk thread that crosses topics; omit/false otherwise>, "thread_kind": "<setup_payoff|callback|escalation|contradiction — only when thread:true>", "rationale": "<short reason>", "title_suggestion": "<short title>", "opening_line": "<verbatim first ~8-12 words>", "hook_type": "question|provocation|claim", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "hook_payoff_coherence": <0-10>, "payoff_offset_sec": <float, 0..span_len>, "overall_score": <0-10>}}]}}""")
+{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "thread": <true ONLY for a cross-chunk thread that crosses topics; omit/false otherwise>, "thread_kind": "<setup_payoff|callback|escalation|contradiction — only when thread:true>", "rationale": "<short reason>", "title_suggestion": "<short title>", "opening_line": "<verbatim first ~8-12 words>", "hook_type": "question|provocation|claim", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "hook_payoff_coherence": <0-10>, "payoff_offset_sec": <float, 0..span_len>, "theme_fit": <0-10>, "overall_score": <0-10>}}]}}""")

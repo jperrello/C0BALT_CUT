@@ -51,6 +51,12 @@ step "segment-topics"
 topics="$dir/topics.json"
 bash "$(skill segment-topics)" "$transcript" "$topics" >/dev/null || die "segment-topics"
 
+# 5. derive-thesis (source subject/spine — the theme prior for pick-segments) -
+step "derive-thesis"
+thesis="$dir/thesis.json"
+bash "$(skill derive-thesis)" "$transcript" "$topics" "$thesis" >/dev/null \
+  || echo "shorts: derive-thesis failed — picking theme-blind" >&2
+
 # 6. pick-segments ----------------------------------------------------------
 step "pick-segments (n=$n)"
 segments_raw="$dir/segments.raw.json"
