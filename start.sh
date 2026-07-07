@@ -1020,6 +1020,52 @@ run_lane() {
 
 rm -f "$SHORTS_PANE_DIR/span.next"
 rmdir "$SHORTS_PANE_DIR/span.lock" 2>/dev/null
+
+# ---- first-span-feedback: inline span 0 + pre-fanout learning gate ---------
+# Run span 0 ALONE through the normal per-span chain (edit -> captions ->
+# completion) on the main shell, then the first-span-feedback loop records a
+# demo of it, has a reviewer watch it, and (from phase 2 on) makes a permanent
+# codebase change if a systemic defect clears its three gates — so spans 1..N
+# inherit whatever code the loop left behind. The counter is seeded at 1 so the
+# lanes claim spans 1..N. Non-fatal + gated: FIRST_SPAN_FEEDBACK=0 restores the
+# old "all spans fan out from 0" behavior exactly.
+pane0="shorts-$id-span0"
+
+# FSF_RERENDER_CMD: the entrypoint-owned span-0 re-render the loop's gate 1
+# invokes (phase 2). Deletes span 0's resume markers so the chain re-runs, then
+# re-runs edit/captions/completion, rewriting output/<slug>/<span0>.mp4 + its
+# grade.json. Exported (var + function) so the skill subprocess can `eval` it.
+rerender_span0() {
+  rm -f "$dir/clip_00.done.completion" "$dir/clip_00.fail"* \
+        "$dir"/clip_00.*meta 2>/dev/null
+  run_span 0 00 "$pane0" \
+    && run_phase3_captions 0 00 "$pane0" \
+    && run_phase4 0 00 "$pane0"
+}
+
+if [[ "${FIRST_SPAN_FEEDBACK:-1}" != "0" && "$count" -gt 0 ]]; then
+  log "[span 0] inline pre-fanout gate"
+  export SHORTS_TL_LANE=0 SHORTS_TL_SPAN=1
+  if run_span 0 00 "$pane0" \
+     && run_phase3_captions 0 00 "$pane0" \
+     && run_phase4 0 00 "$pane0"; then
+    saved0="$(head -1 "$dir/clip_00.done.completion" 2>/dev/null)"
+    if [[ -n "$saved0" ]]; then
+      export dir out_dir slug id pane0
+      export -f rerender_span0 run_span run_phase3_captions run_phase4 2>/dev/null || true
+      export FSF_RERENDER_CMD='rerender_span0'
+      bash "$(skill first-span-feedback)" "$id" clip_00 "$slug" "$out_dir/$saved0" || true
+    fi
+  else
+    log "[span 0] inline render failed — skipping feedback gate, fan-out will cover it"
+    rm -f "$dir/clip_00.done.completion"   # let a lane retry span 0
+  fi
+  tmux kill-session -t "$pane0" 2>/dev/null || true
+  # seed the counter at 1 only when span 0 actually delivered; otherwise leave it
+  # absent so the lanes re-cover span 0 from index 0.
+  [[ -n "${saved0:-}" ]] && printf '1\n' > "$SHORTS_PANE_DIR/span.next"
+fi
+
 declare -a lane_pids=()
 for ((L = 1; L <= max_par; L++)); do
   ( run_lane "$L" ) &

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C0BALT_CUT — Span 0 Demo Review</title>
+<style>
+  :root{
+    --carbon:#101418; --panel:#161b22; --line:#222a33; --plat:#E8ECF1;
+    --muted:#8a97a6; --sapphire:#2E6BFF; --cobalt:#0047AB;
+    --good:#36d399; --warn:#f5b14c; --bad:#ff5c6c;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--carbon); color:var(--plat);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; min-height:100%;
+  }
+  header{
+    display:flex; align-items:center; gap:12px;
+    padding:16px 22px; border-bottom:1px solid var(--line);
+  }
+  .gem{width:22px;height:22px;transform:rotate(45deg);border-radius:4px;
+    background:linear-gradient(135deg,var(--sapphire),var(--cobalt));}
+  header h1{font-size:15px;margin:0;letter-spacing:.5px;font-weight:600}
+  header .handle{color:var(--sapphire);font-weight:700}
+  header .phase{margin-left:auto;font-size:12px;color:var(--muted)}
+  .stage{display:flex;gap:24px;padding:24px;flex:1;min-height:0}
+  .player{
+    background:#000;border:1px solid var(--line);border-radius:14px;
+    width:calc((100vh - 180px) * 0.5625); max-width:340px; aspect-ratio:9/16;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;
+  }
+  .player video{width:100%;height:100%;object-fit:cover;display:block}
+  .player .ph{color:var(--muted);font-size:13px;text-align:center;padding:0 20px;line-height:1.5}
+  .side{flex:1;display:flex;flex-direction:column;gap:16px;min-width:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .gradeRow{display:flex;align-items:center;gap:16px}
+  .gradeNum{font-size:44px;font-weight:800;line-height:1;color:var(--plat)}
+  .gradeNum small{font-size:16px;color:var(--muted);font-weight:600}
+  .tier{padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.4px}
+  .tier.gold{background:rgba(245,177,76,.15);color:var(--warn);border:1px solid var(--warn)}
+  .tier.fixable{background:rgba(46,107,255,.14);color:var(--sapphire);border:1px solid var(--sapphire)}
+  .tier.dross{background:rgba(255,92,108,.14);color:var(--bad);border:1px solid var(--bad)}
+  .meta{margin-left:auto;text-align:right;color:var(--muted);font-size:12px;line-height:1.6}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 12px}
+  .sig{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+  .sig:last-child{border-bottom:0}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .dot.ok{background:var(--good)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+  .sig .k{color:var(--plat)} .sig .v{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+  .flag{color:var(--bad);font-weight:700}
+  .verdict{border-left:3px solid var(--sapphire)}
+  .verdict p{margin:0;font-size:13px;line-height:1.65;color:var(--plat)}
+  .verdict .tag{display:inline-block;margin-bottom:8px;font-size:11px;font-weight:700;
+    letter-spacing:.5px;color:var(--sapphire);text-transform:uppercase}
+  footer{padding:12px 22px;border-top:1px solid var(--line);color:var(--muted);font-size:11px;
+    display:flex;gap:18px}
+  footer b{color:var(--plat);font-weight:600}
+</style>
+</head>
+<body>
+  <header>
+    <div class="gem"></div>
+    <h1>Span 0 Demo Review — <span class="handle">@C0BALT_CUT</span></h1>
+    <div class="phase">{{PHASE}}</div>
+  </header>
+
+  <div class="stage">
+    <div class="player">
+      {{PLAYER}}
+    </div>
+
+    <div class="side">
+      <div class="card gradeRow">
+        <div class="gradeNum">{{GRADE}}<small>/99</small></div>
+        <span class="tier {{TIER_CLASS}}">{{TIER_LABEL}}</span>
+        <div class="meta">{{META}}</div>
+      </div>
+
+      <div class="card">
+        <h2>Retention signals</h2>
+        {{SIGNALS}}
+      </div>
+
+      <div class="card verdict">
+        <span class="tag">{{VERDICT_TAG}}</span>
+        <p>{{VERDICT}}</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span><b>Recording:</b> shot-scraper video → span0-demo.mp4</span>
+    <span><b>Gate:</b> re-render → re-record → re-review before fan-out</span>
+    <span><b>Fix scope:</b> any file · rollback on regression</span>
+  </footer>
+</body>
+</html>
