@@ -7,14 +7,15 @@
 # makes a permanent codebase change so every later span (and every future run)
 # inherits the fix.
 #
-# PHASE 2 (this file): record -> review -> (on defect) bounded fix loop with a
-# hard THREE-GATE accept:
+# record -> review -> (on defect) bounded fix loop with a hard THREE-GATE accept:
 #   gate 1  re-render span 0 via FSF_RERENDER_CMD (entrypoint-owned)
 #   gate 2  check_grade.py: new grade >= prev AND the flagged signal cleared
 #   gate 3  re-record + re-review: the defect is gone
 # Any gate fail -> roll back ONLY the fixer's edits (git stash snapshot), never
-# the operator's pre-existing WIP. All gates pass -> keep the edit locally.
-# (Commit + push land in Phase 3; this phase stops at "kept locally".)
+# the operator's pre-existing WIP. All gates pass -> commit ONLY the fixer's
+# paths (snapshot-vs-tree diff), then pull --rebase + push (each non-fatal — a
+# push failure still leaves the local commit steering THIS run's spans 1..N).
+# FSF_COMMIT=0 keeps an accepted fix local without committing.
 #
 # If FSF_RERENDER_CMD is unset (or no grade.json), a flagged defect is surfaced
 # only — never mutate code we cannot verify.
@@ -185,6 +186,12 @@ try: v=json.load(sys.stdin).get("signal") or ""
 except Exception: v=""
 print(v)'
 }
+verdict_field() {
+  printf '%s' "$1" | FSF_FIELD="$2" python3 -c 'import json,sys,os
+try: v=json.load(sys.stdin).get(os.environ["FSF_FIELD"]) or ""
+except Exception: v=""
+print(v)'
+}
 
 # write span0-feedback.json (the persisted audit verdict).
 write_verdict() {
@@ -242,6 +249,53 @@ rollback() {
     [[ -z "$p" ]] && continue
     rm -f "$git_root/$p" 2>/dev/null || true
   done < <(fixer_new_untracked)
+}
+
+# ---- commit (fixer-scoped) -------------------------------------------------
+# On an ACCEPTED fix, stage + commit ONLY the fixer's exact path set — the
+# tracked files that differ between the pre-fix snapshot and the tree, plus the
+# files the fixer newly created — then pull --rebase + push per the session-close
+# protocol. The operator's pre-existing WIP is already in the snapshot so it
+# never differs and is never swept in; work/ + output/ are gitignored so the
+# re-rendered media never enters the commit. Each git step is NON-FATAL: a push
+# failure still leaves the local commit steering this run's spans 1..N.
+# Records the outcome in commit_action for the persisted verdict.
+commit_action="fixed_kept_local"
+commit_fixer_paths() {
+  local paths=() p
+  while IFS= read -r p; do [[ -n "$p" ]] && paths+=("$p"); done \
+    < <(gitc diff --name-only "$FSF_SNAP" 2>/dev/null)
+  while IFS= read -r p; do [[ -n "$p" ]] && paths+=("$p"); done \
+    < <(fixer_new_untracked)
+  if [[ ${#paths[@]} -eq 0 ]]; then
+    echo "first-span-feedback: no fixer paths to commit — kept local" >&2
+    return 0
+  fi
+  gitc add -- "${paths[@]}" 2>/dev/null || true
+  if gitc diff --cached --quiet 2>/dev/null; then
+    echo "first-span-feedback: nothing staged (fixer paths gitignored?) — kept local" >&2
+    return 0
+  fi
+  local cls; cls="$(verdict_field "$raw_verdict" defect_class)"
+  if ! gitc commit -q -m "first-span-feedback: autofix ${signal:-defect} (systemic ${cls:-defect})
+
+Applied by the pre-fanout first-span-feedback gate on span 0 of ${slug:-?}.
+Cleared signal: ${signal:-n/a}. Gates: re-render + grade + re-review.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>" 2>/dev/null; then
+    echo "first-span-feedback: commit failed — kept local" >&2
+    return 0
+  fi
+  commit_action="fixed_committed_local"
+  echo "first-span-feedback: committed ${#paths[@]} fixer path(s)" >&2
+  gitc pull --rebase >&2 2>/dev/null \
+    || echo "first-span-feedback: pull --rebase failed — push may reject (non-fatal)" >&2
+  if gitc push >&2 2>/dev/null; then
+    commit_action="fixed_pushed"
+    echo "first-span-feedback: pushed autofix" >&2
+  else
+    echo "first-span-feedback: push failed — local commit still steers this run (non-fatal)" >&2
+  fi
 }
 
 # ---- fixer -----------------------------------------------------------------
@@ -344,12 +398,15 @@ for ((it=1; it<=MAXIT; it++)); do
 
   accepted=1
   final_verdict="$raw_verdict"
-  echo "first-span-feedback: all three gates PASSED — fix kept locally (commit deferred to phase 3)" >&2
+  echo "first-span-feedback: all three gates PASSED — fix accepted" >&2
   break
 done
 
 if [[ "$accepted" == "1" ]]; then
-  write_verdict "fixed_kept_local" "$final_verdict"
+  # commit ONLY the fixer's paths + pull/push (all non-fatal); FSF_COMMIT=0 keeps
+  # the accepted fix local. commit_action records what actually happened.
+  [[ "${FSF_COMMIT:-1}" != "0" ]] && commit_fixer_paths
+  write_verdict "$commit_action" "$final_verdict"
 else
   # ensure the tree is clean of any rejected fixer edit
   rollback

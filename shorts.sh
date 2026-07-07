@@ -18,6 +18,7 @@ fi
 
 root="$(cd "$(dirname "$0")" && pwd)"
 skill() { echo "$root/.claude/skills/$1/$1.sh"; }
+[[ -f "$root/.env" ]] && { set -a; . "$root/.env"; set +a; }
 
 # Timing instrument (light touch on the legacy path): source the lib so
 # pane.sh's claude sub-records still emit. SHORTS_TIMING_LOG is set below once
@@ -84,9 +85,11 @@ echo "shorts: $count surviving span(s) after coherence check" >&2
 [[ "$count" -gt 0 ]] || die "no spans survived verify-coherence"
 
 # 8. per-span render --------------------------------------------------------
-saved=0
-for ((i = 0; i < count; i++)); do
-  idx="$(printf '%02d' "$((i + 1))")"
+# The per-span chain, factored into a function so first-span-feedback's
+# FSF_RERENDER_CMD can re-run span 0 (idx 01) on corrected code (its gate 1).
+render_span() {
+  local i="$1"
+  local idx; idx="$(printf '%02d' "$((i + 1))")"
   (
     set -e
     read -r t0 t1 < <(python3 -c '
@@ -269,14 +272,43 @@ for a,b in json.loads(sys.argv[1]): print(f"{a}\t{b}")' "$cuts_json")
 
     bash "$(skill save-local)" "$final" "$src" "short_$idx.mp4" >/dev/null
   )
+}
+
+# save-local's subdir = basename of the source (sans ext); short_01.mp4 lands there.
+srcstem="$(basename "$src")"; srcstem="${srcstem%.*}"
+
+# FSF_RERENDER_CMD hook: re-render span 0 on corrected code — clear its resume
+# sidecars, then re-run the chain. Exported (fn + vars) for the skill subprocess.
+fsf_rerender_span0() {
+  rm -f "$dir"/clip_01.*meta "$dir"/clip_01.done.completion 2>/dev/null
+  render_span 0
+}
+
+saved=0
+for ((i = 0; i < count; i++)); do
+  render_span "$i"
   rc=$?
   if [[ $rc -eq 0 ]]; then
     saved=$((saved + 1))
   elif [[ $rc -eq 7 ]]; then
     skipped=$((skipped + 1))
-    echo "short $idx: skipped (verify-bookends drop)" >&2
+    echo "short $((i + 1)): skipped (verify-bookends drop)" >&2
   else
-    echo "short $idx: skipped (rc=$rc)" >&2
+    echo "short $((i + 1)): skipped (rc=$rc)" >&2
+  fi
+
+  # first-span-feedback: after the FIRST span lands, record a demo of it, have a
+  # reviewer WATCH it, and — on a systemic defect that clears the three gates —
+  # make a permanent code fix so spans 1..N inherit it. Non-fatal + gated by
+  # FIRST_SPAN_FEEDBACK. (shorts.sh has no grade-clip step, so a defect is
+  # surfaced-only unless a grade sidecar exists; the rerender hook is wired for
+  # when one does — start.sh is the fully-gated reference path.)
+  if [[ $i -eq 0 && $rc -eq 0 && "${FIRST_SPAN_FEEDBACK:-1}" != "0" ]]; then
+    saved0="${OUTPUT_DIR:-$root/output}/$srcstem/short_01.mp4"
+    export dir src root transcript ingest_json segments srcstem
+    export -f render_span fsf_rerender_span0 skill 2>/dev/null || true
+    export FSF_RERENDER_CMD='fsf_rerender_span0'
+    bash "$(skill first-span-feedback)" "$id" clip_01 "$srcstem" "$saved0" || true
   fi
 done
 
