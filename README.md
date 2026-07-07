@@ -110,6 +110,18 @@ bash .claude/skills/sources-ledger/sources-ledger.sh show            # 📒 the 
 
 ---
 
+## 🎬 Style Replication
+
+Learn *how the best shorts are edited* and steer the pipeline to match. Both the exemplar shorts you admire (Group C) and our own delivered span 0 are reduced to the same sidecar-free **Style Profile** (pixels + audio only), so the gap is a JSON diff that maps to real knobs — and the fix lands on the *pipeline*, not one clip. Spec → **[`SPEC-style-replication.md`](SPEC-style-replication.md)**.
+
+```bash
+bash .claude/skills/style-corpus/style-corpus.sh learn <short-url> <short-url> ...  # 📚 build the reference corpus
+bash .claude/skills/style-corpus/style-corpus.sh show                               # 🎯 the distilled targets
+# then every start.sh run auto-matches span 0 against the corpus and tunes knobs before fan-out
+```
+
+---
+
 ## 📌 Issue Tracking
 
 This project runs on **bd (beads)** for all task tracking — run `bd prime` for workflow context. 🚫 No ad-hoc TODO files.

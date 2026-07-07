@@ -310,6 +310,18 @@ for ((i = 0; i < count; i++)); do
     export FSF_RERENDER_CMD='fsf_rerender_span0'
     bash "$(skill first-span-feedback)" "$id" clip_01 "$srcstem" "$saved0" || true
   fi
+
+  # style-gate: match span 1 against the Group C exemplar corpus and move
+  # ephemeral knobs (work/<id>/style.env) that spans 2..N inherit. Hard no-op
+  # without references/targets.json; STYLE_GATE=0 disables.
+  if [[ $i -eq 0 && $rc -eq 0 && "${STYLE_GATE:-1}" != "0" && -f "$root/${STYLE_REFS:-references}/targets.json" ]]; then
+    saved0="${OUTPUT_DIR:-$root/output}/$srcstem/short_01.mp4"
+    export dir src root transcript ingest_json segments srcstem
+    export -f render_span fsf_rerender_span0 skill 2>/dev/null || true
+    export SG_RERENDER_CMD='fsf_rerender_span0'
+    bash "$(skill style-gate)" "$id" clip_01 "$saved0" || true
+    if [[ -f "$dir/style.env" ]]; then set -a; . "$dir/style.env"; set +a; fi
+  fi
 done
 
 # broll-cleanup: runs ONCE at end of run — evicts only this run's mcptube b-roll

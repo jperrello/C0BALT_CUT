@@ -1060,6 +1060,21 @@ if [[ "${FIRST_SPAN_FEEDBACK:-1}" != "0" && "$count" -gt 0 ]]; then
     log "[span 0] inline render failed — skipping feedback gate, fan-out will cover it"
     rm -f "$dir/clip_00.done.completion"   # let a lane retry span 0
   fi
+  # ---- style-gate: span-0 exemplar match + knob mover (SPEC-style-replication) --
+  # Profile the DELIVERED span 0 sidecar-free (profile-clip), match it against
+  # the Group C corpus (references/targets.json), and on a levered mismatch move
+  # ephemeral knobs (work/<id>/style.env), re-render span 0, re-match. Accepted
+  # knobs are sourced below so spans 1..N inherit them. Hard no-op when no corpus
+  # exists or STYLE_GATE=0 — stock behavior is unchanged.
+  if [[ "${STYLE_GATE:-1}" != "0" && -n "${saved0:-}" && -f "$root/${STYLE_REFS:-references}/targets.json" ]]; then
+    log "[span 0] style-gate (exemplar match)"
+    export SG_RERENDER_CMD='rerender_span0'
+    bash "$(skill style-gate)" "$id" clip_00 "$out_dir/$saved0" || true
+    if [[ -f "$dir/style.env" ]]; then
+      log "[span 0] style-gate accepted knobs: $(tr '\n' ' ' < "$dir/style.env")"
+      set -a; . "$dir/style.env"; set +a
+    fi
+  fi
   tmux kill-session -t "$pane0" 2>/dev/null || true
   # seed the counter at 1 only when span 0 actually delivered; otherwise leave it
   # absent so the lanes re-cover span 0 from index 0.
