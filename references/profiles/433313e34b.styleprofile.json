@@ -1,0 +1,49 @@
+{
+  "style_profile_version": 1,
+  "clip": "/Users/jperr/Documents/shorts/work/_style/433313e34b/exemplar.mp4",
+  "duration_sec": 27.71,
+  "cuts": {
+    "cuts_per_min": 52.0,
+    "median_shot_sec": 0.87,
+    "p90_shot_sec": 2.41,
+    "longest_static_gap": 5.9
+  },
+  "speech": {
+    "max_silence_sec": 0.0,
+    "speech_fraction": 1.0,
+    "words_per_min": 231.7
+  },
+  "visual": {
+    "face_fraction": 0.312,
+    "cutaway_fraction": 0.688,
+    "cutaway_count": 5,
+    "opens_on_face": false
+  },
+  "captions": {
+    "present_fraction": 0.0,
+    "band": "lower_third"
+  },
+  "audio": {
+    "onsets_per_min": 0.0,
+    "music_floor_db": -29.8,
+    "music_present": true
+  },
+  "hook": {
+    "first_cut_sec": 5.9,
+    "title_overlay_open": false
+  },
+  "vision": {
+    "broll_mode": "literal",
+    "caption_style": "karaoke_accent",
+    "production_class": "compilation",
+    "hook_device": "question",
+    "confidence": 0.72
+  },
+  "meta": {
+    "width": 1080,
+    "height": 1920,
+    "needs_vision": [],
+    "notes": [],
+    "source_url": "https://www.youtube.com/shorts/vrOXNwYteak"
+  }
+}

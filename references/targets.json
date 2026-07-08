@@ -1,0 +1,107 @@
+{
+  "style_profile_version": 1,
+  "n": 2,
+  "clips": [
+    "/Users/jperr/Documents/shorts/work/_style/1655475e5b/exemplar.mp4",
+    "/Users/jperr/Documents/shorts/work/_style/433313e34b/exemplar.mp4"
+  ],
+  "fields": {
+    "cuts.cuts_per_min": {
+      "median": 71.3,
+      "sigma": 28.614,
+      "n": 2,
+      "lever": "JUMP_CUT_SEG",
+      "invert": true
+    },
+    "cuts.median_shot_sec": {
+      "median": 0.87,
+      "sigma": 0.297,
+      "n": 2,
+      "lever": "JUMP_CUT_SEG",
+      "invert": false
+    },
+    "cuts.longest_static_gap": {
+      "median": 5.9,
+      "sigma": 2.58,
+      "n": 2,
+      "lever": "JUMP_CUT_MAX_GAP",
+      "invert": false
+    },
+    "speech.words_per_min": {
+      "median": 231.7,
+      "sigma": 23.17,
+      "n": 2,
+      "lever": "SPEED",
+      "invert": false
+    },
+    "speech.max_silence_sec": {
+      "median": 0.0,
+      "sigma": 0.0,
+      "n": 2,
+      "lever": "SPEED",
+      "invert": false
+    },
+    "speech.speech_fraction": {
+      "median": 1.0,
+      "sigma": 0.1,
+      "n": 2,
+      "lever": "SPEED",
+      "invert": false
+    },
+    "visual.cutaway_fraction": {
+      "median": 0.75,
+      "sigma": 0.092,
+      "n": 2,
+      "lever": "SWITCH_SPACING",
+      "invert": true
+    },
+    "duration_sec": {
+      "median": 42.91,
+      "sigma": 22.536,
+      "n": 2,
+      "diagnostic": true
+    },
+    "cuts.p90_shot_sec": {
+      "median": 2.41,
+      "sigma": 1.127,
+      "n": 2,
+      "diagnostic": true
+    },
+    "visual.face_fraction": {
+      "median": 0.312,
+      "sigma": 0.092,
+      "n": 2,
+      "diagnostic": true
+    },
+    "visual.cutaway_count": {
+      "median": 5.0,
+      "sigma": 2.965,
+      "n": 2,
+      "diagnostic": true
+    },
+    "captions.present_fraction": {
+      "median": 0.125,
+      "sigma": 0.185,
+      "n": 2,
+      "diagnostic": true
+    },
+    "audio.onsets_per_min": {
+      "median": 0.0,
+      "sigma": 0.0,
+      "n": 2,
+      "diagnostic": true
+    },
+    "audio.music_floor_db": {
+      "median": -29.8,
+      "sigma": 10.675,
+      "n": 2,
+      "diagnostic": true
+    },
+    "hook.first_cut_sec": {
+      "median": 5.9,
+      "sigma": 6.523,
+      "n": 2,
+      "diagnostic": true
+    }
+  }
+}
