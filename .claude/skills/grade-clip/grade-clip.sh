@@ -44,7 +44,7 @@ gradesig() {
     "$d/$stem.tight.transcript.json" "$d/$stem.transcript.json" "$d/$stem.verify.json"; do
     [[ -f "$f" ]] && parts="$parts|$(mtime "$f")"
   done
-  printf '%s|%s|%s|%s|v1' "$parts" "$minup" "${GRADE_SKIP_CLAUDE:-0}" "$scene"
+  printf '%s|%s|%s|%s|%s|v1' "$parts" "$minup" "${GRADE_SKIP_CLAUDE:-0}" "$scene" "${GRADE_FACE_OPEN:-face}"
 }
 
 # grade ONE clip -> writes <clip>.grade.json. Echoes the path. Never fatal.

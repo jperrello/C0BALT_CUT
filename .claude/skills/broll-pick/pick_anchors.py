@@ -47,9 +47,12 @@ a rifle scope crosshair — NOT a cat chasing a laser pointer (literally a red d
 totally wrong tone). Pick footage whose CONTEXT and MOOD fit the moment.
 
 DENSITY — be aggressive. Cover the clip with cutaways the way a top creator would:
-aim for a cutaway on roughly every other beat where a sensible visual exists. Use
-6-10 windows total (across all anchors) when the clip supports it; a window is
-usually 1-2 chunks. For any anchor with a clear subject, define MULTIPLE windows
+the proven-viral floor is cutaway footage on ~60-75% of the runtime, with the
+talking head as the garnish between cuts, not the default picture. Aim for a
+cutaway on EVERY beat where a sensible visual exists — a beat should stay on the
+speaker only when no honest footage fits it. Use 8-12 windows total (across all
+anchors) when the clip supports it; a window is usually 1-2 chunks, and a strong
+subject can carry a 2-3 chunk window. For any anchor with a clear subject, define MULTIPLE windows
 intercut with the speaker, each window using a DIFFERENT query so the footage
 varies (e.g. hippo: "hippo underwater", "hippo running on land", "hippo in grass").
 

@@ -44,7 +44,7 @@ slot_base="$(basename "$out")"; slot_base="${slot_base%.broll_plan.json}"
 
 mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
 chunks_m="$(mtime "$chunks")"
-sig="$(mtime "$transcript")|$chunks_m|$(mtime "$ingest")|v1"
+sig="$(mtime "$transcript")|$chunks_m|$(mtime "$ingest")|v2"
 meta="$out.pickmeta"
 
 if [[ -f "$out" && -f "$meta" && "$(cat "$meta")" == "$sig" ]]; then
@@ -372,7 +372,7 @@ for ((i = 0; i < nwin; i++)); do
   [[ -s "$tmp/pick_$i.json" ]] && cat "$tmp/pick_$i.json" >> "$picks"
 done
 
-python3 "$here/emit_plan.py" "$picks" "$ids" "$vused" "$CAP" "$chunks_m" "$out" >/dev/null
+python3 "$here/emit_plan.py" "$picks" "$ids" "$vused" "$CAP" "$chunks_m" "$out" "$transcript" >/dev/null
 printf '%s' "$sig" > "$meta"
 echo "broll-pick: wrote $out (picks=$(wc -l < "$picks" | tr -d ' '), vision=$vused)" >&2
 echo "$out"

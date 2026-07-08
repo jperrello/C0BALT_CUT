@@ -147,6 +147,13 @@ Pick the framing that conveys the clip's point most clearly to a
 stranger. When in doubt, prefer the framing that states the most of the
 message — under-explaining loses more viewers than mild spoiling.
 
+Whatever framing you pick, the title must open an explicit CURIOSITY GAP
+in its first words — a specific question or a concrete shock (a number,
+a named person, a stark claim). Every proven-viral clip in this genre
+states one inside the first 2 seconds ("HAVE YOU EVER WONDERED...", a
+shocking wealth stat). A title that merely describes the clip without
+loading that gap is a flat hook — sharpen it before emitting.
+
 ## Step 2.5 — translate jargon into a human stake
 
 Experts speak in abstractions; titles that travel speak in consequences.

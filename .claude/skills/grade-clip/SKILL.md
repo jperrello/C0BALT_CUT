@@ -43,7 +43,11 @@ grade-clip.sh --backlog [output_dir=output]    # sweep output/<src>/*.mp4 + _tri
   fill-vertical's `face_landmarker.task`); TRUE if a face spans >~2% of frame
   area. If `.vert.fillplan.json` is present, factor `shots[0].kind != "face"` as
   the face-withheld signal. `face_withheld` hard-cap fires when no face in frame0
-  (or fillplan shot0 kind != face).
+  (or fillplan shot0 kind != face). Policy is A/B-able via `GRADE_FACE_OPEN`:
+  `face` (default, legacy) keeps the hard cap; `broll` inverts it (opening ON a
+  talking head takes a soft -8 penalty, no cap, no `broll_open_truncate` route —
+  the 2026-07-07 perf-style analysis found opens_on_face ranked -0.94 against
+  likes/1k); `off` disables the frame1 judgment entirely.
 - **`letterbox_bars`** — sample top/bottom + left/right edge bands; flag a
   near-constant / very-low-variance band (black bars / blurred pillarbox). A
   correct full-bleed punch-in has high variance everywhere. `letterbox` hard-cap
@@ -69,7 +73,7 @@ grade-clip.sh --backlog [output_dir=output]    # sweep output/<src>/*.mp4 + _tri
 `letterbox → rerun_recommended`, `face_withheld → shot0_repunch`,
 `credit_at_open → credit_rerender`, `blocking_card → card_rerender`. A
 `broll_plan.picks` window overlapping `[0, GRADE_OPEN_GUARD_SEC]` adds
-`broll_open_truncate`.
+`broll_open_truncate` (only under `GRADE_FACE_OPEN=face`).
 
 **Grade formula** (explicit + commented in `grade.py`): start near 99, subtract
 documented penalties for the soft signals (large static gap, late/None

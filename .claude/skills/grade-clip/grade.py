@@ -12,6 +12,12 @@ STATIC_BUDGET = float(os.environ.get("GRADE_STATIC_GAP_SEC", "5.0"))
 SILENCE_BUDGET = float(os.environ.get("GRADE_SILENCE_SEC", "0.8"))
 MIN_CAPTION_WORDS = int(os.environ.get("GRADE_MIN_CAPTION_WORDS", "3"))
 SILENCE_DB = os.environ.get("GRADE_SILENCE_DB", "-30dB")
+# frame1 face policy A/B (perf-style analysis 2026-07-07: opens_on_face ranked
+# rho=-0.94 against likes/1k — the swipe-gate "face at frame 1" heuristic may be
+# backwards for engagement). "face" = legacy behavior (no face -> face_withheld
+# hard cap); "broll" = inverted (opening ON a face takes a soft penalty, no
+# face_withheld cap, no broll_open_truncate route); "off" = no frame1 judgment.
+FACE_OPEN = os.environ.get("GRADE_FACE_OPEN", "face")
 
 STOP = set("the a an and or of to in on for with is are was were be been being this that "
            "it he she they you i we him her them his my your our their so but if then "
@@ -332,6 +338,9 @@ def grade(signals, hard, claude):
     if fc is None or fc > FIRST_CHANGE_BUDGET:
         g -= 5.0; notes.append("late_change-5")
 
+    if FACE_OPEN == "broll" and signals.get("frame1_is_face") is True:
+        g -= 8.0; notes.append("opens_on_face-8")
+
     if claude:
         # rubric 0-10 each; pull the grade toward the mean of the three terms
         vals = [claude.get(k) for k in ("hook_payoff", "open_loop", "cold_context")]
@@ -358,7 +367,9 @@ CAP_ROUTE = {
 
 def routes(hard, signals, sc):
     r = []
-    broll = loadjson(sc["broll"])
+    # cold-open b-roll is only a defect under the legacy face-at-frame1 policy;
+    # in broll/off modes it is the desired open, so never route a truncate.
+    broll = loadjson(sc["broll"]) if FACE_OPEN == "face" else None
     if broll:
         for p in broll.get("picks", []):
             if float(p.get("t0", 9e9)) <= OPEN_GUARD and float(p.get("t1", 0)) > 0:
@@ -411,6 +422,8 @@ def gradeclip(clip, skipclaude, scene):
         facewithheld = False             # no evidence either way -> don't cap
     if shot0person and framefab is not True:
         facewithheld = False             # deliberate human cold open (no face) -> soft, not a hard cap
+    if FACE_OPEN != "face":
+        facewithheld = False             # broll/off modes: never hard-cap on frame1 policy
 
     lb = letterbox(f0)
     credit = creditopen(clip, td)
