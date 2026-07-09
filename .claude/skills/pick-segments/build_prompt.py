@@ -172,12 +172,28 @@ SOURCE SUBJECT — the SPINE of the whole video (highest-level selection prior):
 This source wanders through many chapters, but most viewers came for its SPINE. A short that ADVANCES or ILLUSTRATES the subject above represents the episode; an entertaining but OFF-SPINE tangent (a random anecdote with nothing to do with the subject) makes a clip-shaped short that misrepresents the source — this is the exact failure we are fixing. STRONGLY PREFER on-spine moments. An off-spine tangent must be a genuinely irresistible standalone story to earn a pick over an on-spine moment, and never fill more than ONE of your {n} picks. Score each pick's theme_fit honestly (below); the deterministic ranker down-weights off-spine picks.
 """
 
+# The atomic unit of a short is ONE IDEA, not one chapter (shorts-sgpa). Topics
+# are a MAP of where ideas live, not a fence. A single continuous cut stays in
+# one topic; a multi-cut short may assemble the same idea from cuts in DIFFERENT
+# topics. ASSEMBLE_CROSS_TOPIC=0 restores the old single-topic hard constraint.
+CROSS_TOPIC = os.environ.get("ASSEMBLE_CROSS_TOPIC", "1") != "0"
 if topics:
     topic_block = "\n".join(
         f"  topic {i+1} [{t['t0']:.1f}-{t['t1']:.1f}] {t.get('title','')}: {t.get('summary','')}"
         for i, t in enumerate(topics)
     )
-    topic_rules = f"""
+    if CROSS_TOPIC:
+        topic_rules = f"""
+TOPIC MAP (where the ideas live in this source — a guide, NOT a fence):
+{topic_block}
+
+The atomic unit of a short is ONE IDEA, not one chapter. These chapters just show where each idea sits. Two rules govern how cuts relate to them:
+  - A SINGLE continuous cut must stay inside one topic (a raw slice that runs across a chapter change is two half-ideas, not one clean idea).
+  - A MULTI-CUT short MAY pull its cuts from DIFFERENT topics — but ONLY when every cut develops the SAME single idea (a point set up in one chapter and paid off in another; a claim here and its vivid example far later; a question and its answer). This is the whole point: the same idea revisited across the video becomes one tight short.
+The ONLY thing forbidden is gluing two DIFFERENT ideas together. If a topic is shorter than {dmin:.0f}s, don't force a lone single-cut pick from it. You don't need to pick from every topic; pick the {n} strongest IDEAS overall, wherever their pieces live.
+"""
+    else:
+        topic_rules = f"""
 TOPIC BOUNDARIES (HARD CONSTRAINT):
 {topic_block}
 
@@ -207,25 +223,26 @@ A good pick must make sense to a cold viewer with no surrounding podcast context
 
 Reject a span if it is merely a highlight, definition, example, punchline, or replay spike without the surrounding thought. It is better to choose a less flashy topic with a complete arc than a hotter moment that ends abruptly. For long-form explainers and interviews, prefer 40-55 seconds of source when that is what the idea needs; use the minimum length only when the whole idea truly lands in less.
 
-ASSEMBLE THE STORY WITH CUTS (important): a great short is EDITED, not just a raw clip. Each short is built from 1-3 source segments ("cuts") joined end-to-end. Most strong moments are a single continuous cut. But when the best version of a story has a slow middle, a tangent, or dead setup between two strong beats, SPLIT it: keep the gripping setup, CUT OUT the sag, and jump to the payoff — so the viewer gets a tight, complete arc instead of a thin skeleton or a meandering clip. Think like an editor assembling the most engaging 40-55s of source, not a knife making one slice.
-  - Provide "cuts": a list of [start, end] source-second ranges, in chronological order, non-overlapping. The cuts play back-to-back.
-  - ALL cuts of one short MUST stay within ONE topic — you are tightening a single story, never splicing two unrelated ones.
+ASSEMBLE THE STORY WITH CUTS (this is the core craft): a great short is EDITED like a conversation, not sliced raw. Each short is built from 1-3 source segments ("cuts") joined end-to-end into ONE flowing idea. Most strong moments are a single continuous cut — use that when the whole idea lives in one clean stretch. But the same idea is often developed in PIECES scattered across the video: set up at 6:00, sharpened at 9:00, paid off at 13:00, with dead air and other topics in between. When that makes the better short, ASSEMBLE it — take the 2-3 best pieces of that ONE idea from WHEREVER they live in the source, drop everything between, and deliver one tight, self-contained conversation. Think like an editor cutting a guest's best articulation of a single point together, not a knife making one slice.
+  - Provide "cuts": a list of [start, end] source-second ranges, in SOURCE-CHRONOLOGICAL order, non-overlapping. The cuts play back-to-back.
+  - Every cut in a short must develop the SAME ONE idea. Cuts MAY come from different topics/chapters when they are that same idea (setup→payoff, claim→example, question→answer, callback). The ONLY hard rule: never glue two DIFFERENT ideas together.
+  - Name that idea in the "idea" field (ONE sentence): the single throughline all your cuts share. If you can't state it in one sentence, the cuts are not one idea — don't stitch them.
   - The SUM of cut durations must be {dmin:.0f}-{dmax:.0f}s. Keep cuts to 1-3; don't over-chop.
   - t0 = first cut's start, t1 = last cut's end.
-  - A single-cut short is just "cuts": [[t0, t1]] — that's fine and common.
-  - QUESTION-LEAD ASSEMBLY: a cold viewer stops for a hook they instantly get (see COLD-OPEN HOOK below). If the best arc's payoff is strong but its natural opening is slow, make your FIRST cut a short question or provocation pulled from EARLIER in the SAME topic that sets up exactly this payoff, then cut straight to the payoff. The lead-in must be about the same thing — you are restoring the Q→A the edit lost, never bolting on an unrelated question — and must occur earlier in the source than the payoff (cuts always play in source-chronological order).
+  - A single-cut short is just "cuts": [[t0, t1]] — fine and common.
+  - QUESTION-LEAD ASSEMBLY: a cold viewer stops for a hook they instantly get (see COLD-OPEN HOOK below). If the best idea's payoff is strong but its natural opening is slow, make your FIRST cut a short question or provocation pulled from EARLIER in the source that sets up exactly this payoff, then cut straight to the payoff. The lead-in must be about the SAME idea — you are restoring the Q→A the edit lost, never bolting on an unrelated question — and must occur earlier in the source than the payoff (cuts always play in source-chronological order).
 
-COLD-OPEN HOOK (highest priority — shorts that don't grab in the first 1-2s are dead):
-Frame 1 IS the hook — no preamble, no throat-clearing. The opening line is what a scrolling stranger sees and hears first (often muted). The strongest openings are understandable with ZERO context:
+COLD-OPEN HOOK (THE single most important thing — a short that doesn't grab in the FIRST SECOND is dead):
+There is NO title card and NO on-screen text explaining this clip — the SCRIPT alone carries the hook. The FIRST SPOKEN SENTENCE by itself must make a scrolling stranger stop in about ONE second (assume they hear it muted, then unmute). No preamble, no throat-clearing. The strongest openings are understandable with ZERO context:
   - a QUESTION a stranger has also wondered ("How come I can see the moon during the day?", "What's more likely, teleportation or time travel?"),
   - a PROVOCATION / contrarian claim ("the richest women in the world — almost all of it is divorce money"),
   - or a striking, concrete factual claim with a named subject or a number.
-PREFER spans whose literal first sentence is already one of these; use QUESTION-LEAD ASSEMBLY (above) when the payoff is great but its natural open is weak. Score each pick on:
-  - hook_score (0-10): does the FIRST 1-2s land one of the three openings above for a cold viewer? Reward direct questions, contrarian provocations, concrete nouns, numbers, named subjects. Punish vague setup, pronouns with no referent, and slow throat-clearing.
+PREFER spans whose literal first spoken sentence is already one of these; use QUESTION-LEAD ASSEMBLY (above) to pull a hook to the front when the best idea's natural open is weak. A pick whose spoken opening does NOT stop a stranger in ~1s should not be chosen at all — there is no title to rescue it. Score each pick on:
+  - hook_score (0-10): does the FIRST SPOKEN SECOND land one of the three openings above for a cold viewer with no title and no context? Reward direct questions, contrarian provocations, concrete nouns, numbers, named subjects. Punish vague setup, pronouns with no referent, and slow throat-clearing HARD — a weak spoken opener is fatal now.
   - context_score (0-10): can a cold viewer understand the setup, the turn, and why the ending matters without the surrounding sentences? Penalize abrupt endings hard.
   - structure_score (0-10): does the span have hook → foreshadow → payoff → landing, with but/therefore causality between beats (not just "and then")? Does it open a curiosity loop that resolves by the end?
   - hook_payoff_coherence (0-10): does the cold-open hook ACTUALLY pay off inside this span? A 10 means the opening question/provocation/claim is directly answered, resolved, or delivered on by the turn and landing. Score LOW when the open is bait that never lands — a juicy first line whose promise the rest of the span never honors, or a turn about something other than what the hook set up. This is the anti-clickbait term: reward openings whose curiosity loop closes; punish bait-and-switch.
-  - payoff_offset_sec (0..span_len): seconds from the DELIVERED span start to the exact line where the turn/insight/payoff lands (the moment the curiosity loop starts resolving). 0 means the very first sentence is already the turn. THE TURN MUST LAND WITHIN ~3s OF THE DELIVERED OPEN — a payoff that lands 10s in is a setup-heavy bait-opener that loses the cold viewer before the reward. If the natural payoff is late but strong, use QUESTION-LEAD ASSEMBLY (above) to pull a short setup-question cut to the front so payoff_offset_sec stays small. Measure honestly against the cuts you chose: it is the offset within the assembled, delivered short, not the raw source.
+  - payoff_offset_sec (0..span_len): seconds from the DELIVERED span start to the exact line where the turn/insight/payoff lands (the moment the curiosity loop starts resolving). 0 means the very first sentence is already the turn. THE TURN MUST LAND WITHIN ~2s OF THE DELIVERED OPEN — a payoff that lands 10s in is a setup-heavy bait-opener that loses the cold viewer before the reward. If the natural payoff is late but strong, use QUESTION-LEAD ASSEMBLY (above) to pull a short setup-question cut to the front so payoff_offset_sec stays small. Measure honestly against the cuts you chose: it is the offset within the assembled, delivered short, not the raw source.
   - theme_fit (0-10): does THIS moment advance or illustrate the SOURCE SUBJECT above? 10 = squarely on the spine (a core-theme insight or its best illustration); 5 = tangentially related; 0 = an entertaining but off-spine tangent with nothing to do with the subject. If NO SOURCE SUBJECT was given above, score 5 for every pick.
   - overall_score (0-10): your holistic rank — would you stop scrolling AND watch to the end? Weigh complete standalone meaning first, then cold-open hook strength (PREFER open-loop question/provocation hooks over flat claims), then how fast the payoff lands, then vocal energy/affect, concrete stakes, RMS peaks, and replay peaks. RMS/replay can break ties but cannot rescue a confusing, abrupt, or slow-to-pay-off clip. (Note: the deterministic ranker recomputes the final 0-99 rank from your sub-scores — including hook_payoff_coherence and payoff_offset_sec — so rate every field honestly rather than gaming overall_score.)
 Also report, for each pick:
@@ -237,4 +254,4 @@ HARD REJECT — do NOT pick spans whose first transcript word is filler:
 Trim the span start forward to a stronger opening word if needed (still respect {dmin:.0f}s minimum).
 
 Reply with ONLY a JSON object (no prose, no code fences):
-{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "thread": <true ONLY for a cross-chunk thread that crosses topics; omit/false otherwise>, "thread_kind": "<setup_payoff|callback|escalation|contradiction — only when thread:true>", "rationale": "<short reason>", "title_suggestion": "<short title>", "opening_line": "<verbatim first ~8-12 words>", "hook_type": "question|provocation|claim", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "hook_payoff_coherence": <0-10>, "payoff_offset_sec": <float, 0..span_len>, "theme_fit": <0-10>, "overall_score": <0-10>}}]}}""")
+{{"shorts": [{{"t0": <float>, "t1": <float>, "cuts": [[<float>, <float>]], "idea": "<ONE sentence: the single throughline all cuts share>", "thread_kind": "<optional: setup_payoff|callback|escalation|contradiction — label the assembly type when a multi-cut short spans different topics>", "rationale": "<short reason>", "title_suggestion": "<short title>", "opening_line": "<verbatim first ~8-12 words>", "hook_type": "question|provocation|claim", "hook_score": <0-10>, "context_score": <0-10>, "structure_score": <0-10>, "hook_payoff_coherence": <0-10>, "payoff_offset_sec": <float, 0..span_len>, "theme_fit": <0-10>, "overall_score": <0-10>}}]}}""")

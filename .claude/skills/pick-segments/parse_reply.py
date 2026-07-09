@@ -10,7 +10,16 @@ thesis_path = sys.argv[9] if len(sys.argv) > 9 else ""
 n, dmin, dmax = int(n), float(dmin), float(dmax)
 
 # seconds the turn/payoff is allowed to take before we start penalizing.
-PAYOFF_BUDGET = float(os.environ.get("PAYOFF_BUDGET_SEC", "3.0"))
+PAYOFF_BUDGET = float(os.environ.get("PAYOFF_BUDGET_SEC", "2.0"))
+# 1-second spoken-hook floor (shorts-sgpa): with the title card retired, the
+# spoken opening alone carries the hook, so a pick whose hook_score is below this
+# is dropped — a weak opener can never ship. Guarded so it never empties the set
+# (if every pick is below floor, the single best-hook pick is kept + a WARN).
+HOOK_FLOOR = float(os.environ.get("PICK_HOOK_FLOOR", "5.0"))
+# cross-topic idea assembly (shorts-sgpa): a multi-cut span may stitch the SAME
+# idea from different topics. =0 restores the old single-topic hard constraint
+# (cross-topic then requires an explicit thread:true, as before).
+CROSS_TOPIC = os.environ.get("ASSEMBLE_CROSS_TOPIC", "1") != "0"
 # theme_fit weight: how hard on-spine picks out-rank off-spine tangents. Applied
 # as (theme_fit - 5) * THEME_WEIGHT, so a neutral 5 is 0, a 10 adds +THEME_WEIGHT*5
 # and a 0 subtracts the same. Default 1.4 => a +-7 rank swing across the 0-99
@@ -239,14 +248,22 @@ for sh in data.get("shorts", []):
         continue
     if any(cuts_overlap(cuts, sc) for sc in seen):
         continue
-    # A cross-chunk THREAD span (shorts-8la) is the sanctioned exception to the
-    # single-topic rule: a deliberate setup->payoff/callback/contradiction stitch
-    # of >=2 non-contiguous cuts. It bypasses the topic-boundary drop here and —
-    # being multi-cut — already bypasses verify-coherence tightening downstream.
-    is_thread = bool(sh.get("thread")) and len(cuts) >= 2
+    # The atomic unit of a short is ONE IDEA, not one topic (shorts-sgpa). A
+    # MULTI-CUT span is a Claude-asserted single-idea assembly (named in `idea`)
+    # and MAY stitch cuts from different topics — it also bypasses
+    # verify-coherence tightening downstream (that gate keys on len(cuts)>1). A
+    # SINGLE continuous cut must still sit within one topic (a raw slice crossing
+    # a chapter is two half-ideas). The old RLM thread:true is now just one
+    # labeled kind of this general capability; when ASSEMBLE_CROSS_TOPIC=0 only a
+    # thread:true span may cross (exact legacy behavior).
+    multicut = len(cuts) >= 2
+    is_thread = bool(sh.get("thread")) and multicut
+    cross_ok = (multicut and CROSS_TOPIC) or is_thread
     tp = topic_of(t0, t1) if topics else None
-    if topics and tp is None and not is_thread:
-        print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (crosses topic boundary)", file=sys.stderr)
+    if topics and tp is None and not cross_ok:
+        why = ("single-cut slice crosses topic boundary" if not multicut
+               else "crosses topic boundary (ASSEMBLE_CROSS_TOPIC=0)")
+        print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} ({why})", file=sys.stderr)
         continue
     if starts_with_filler(t0):
         print(f"pick-segments: dropping span {t0:.1f}-{t1:.1f} (filler/fragment opening)", file=sys.stderr)
@@ -256,8 +273,8 @@ for sh in data.get("shorts", []):
     offset = float(sh.get("payoff_offset_sec", 0) or 0)
     offset = max(0.0, min(span_len, offset))   # clamp into the delivered window
     # bias the open toward the turn line when the lead is pure setup — but never
-    # re-cut a deliberate thread stitch (its cuts are intentional).
-    cuts, shift = ([list(c) for c in cuts], 0.0) if is_thread else nudge_t0(cuts, offset)
+    # re-cut a multi-cut assembly (its cuts are intentional / cross-topic).
+    cuts, shift = ([list(c) for c in cuts], 0.0) if multicut else nudge_t0(cuts, offset)
     if shift > 0:
         t0 = cuts[0][0]
         t1 = cuts[-1][1]
@@ -281,8 +298,14 @@ for sh in data.get("shorts", []):
         # on-spine fit vs the source subject (derive-thesis). 5 = neutral/theme-blind.
         "theme_fit": max(0.0, min(10.0, float(sh.get("theme_fit", 5) or 5))),
     }
+    # the single throughline the cuts share (shorts-sgpa) — audit + downstream.
+    idea = str(sh.get("idea", "")).strip()[:200]
+    if idea:
+        item["idea"] = idea
     if tp is not None:
         item["topic"] = tp.get("title", "")
+    elif idea:
+        item["topic"] = idea            # cross-topic assembly: the idea IS the label
     if is_thread:
         item["thread"] = True
         k = str(sh.get("thread_kind", "") or sh.get("kind", "")).strip().lower()
@@ -426,6 +449,28 @@ for c in cands:
         item["overall_score"] = round(
             min(99.0, item["overall_score"] + min(4.0, max(0.0, (rq - 1.0) * 4.0))), 2)
     shorts.append(item)
+
+
+# --- 1-second spoken-hook floor (shorts-sgpa) ------------------------------
+# With no title card to rescue a slow open, a weak spoken opener is fatal:
+# drop every pick under HOOK_FLOOR. Backfilled rlm picks pass by construction
+# (hook_score = confidence*10 >= 8.5). Guarded so a genuinely flat source never
+# empties the pipeline — if nothing clears the floor, keep the single best-hook
+# pick and WARN.
+if HOOK_FLOOR > 0 and shorts:
+    kept = [s for s in shorts if s.get("hook_score", 0.0) >= HOOK_FLOOR]
+    dropped = [s for s in shorts if s not in kept]
+    for s in dropped:
+        print(f"pick-segments: dropping span {s['t0']:.1f}-{s['t1']:.1f} "
+              f"(hook_score {s['hook_score']:.1f} < floor {HOOK_FLOOR:.1f})",
+              file=sys.stderr)
+    if not kept:
+        best = max(shorts, key=lambda s: s.get("hook_score", 0.0))
+        print(f"pick-segments: WARN all picks below hook floor {HOOK_FLOOR:.1f}; "
+              f"keeping best-hook span {best['t0']:.1f}-{best['t1']:.1f} "
+              f"(hook_score {best['hook_score']:.1f})", file=sys.stderr)
+        kept = [best]
+    shorts = kept
 
 
 def rank_key(s):
