@@ -206,7 +206,11 @@ def score99(item):
     # theme fit: reward on-spine picks, penalize off-spine tangents symmetrically
     # around a neutral 5. No-op when theme-blind (theme_fit defaults to 5).
     theme = (item.get("theme_fit", 5.0) - 5.0) * THEME_WEIGHT
-    s = base - penalty + openloop + theme
+    # tail open-loop bonus: an ending that leaves a debatable question (the
+    # "that being said..." theory-bait close) drives loop/rewatch — the 168%
+    # initial-retention signal. Symmetric around a neutral 5, ±3 rank pts max.
+    tail = (item.get("ending_open_loop", 5.0) - 5.0) * 0.6
+    s = base - penalty + openloop + theme + tail
     return max(0.0, min(99.0, s))
 
 
@@ -297,6 +301,9 @@ for sh in data.get("shorts", []):
         "payoff_offset_sec": round(offset, 2),
         # on-spine fit vs the source subject (derive-thesis). 5 = neutral/theme-blind.
         "theme_fit": max(0.0, min(10.0, float(sh.get("theme_fit", 5) or 5))),
+        # tail open-loop: does the LAST sentence leave a debatable question /
+        # theory-bait (rewatch + comments)? 5 = neutral when Claude omits it.
+        "ending_open_loop": max(0.0, min(10.0, float(sh.get("ending_open_loop", 5) or 5))),
     }
     # the single throughline the cuts share (shorts-sgpa) — audit + downstream.
     idea = str(sh.get("idea", "")).strip()[:200]

@@ -27,6 +27,12 @@ print("""For EACH candidate decide STRICTLY and independently:
 - REJECT literal-but-wrong matches: footage that technically contains the keyword
   but has the wrong context or tone (e.g. a cat chasing a laser pointer when the
   story needs a menacing sniper laser dot; a comedy clip under a serious beat).
+- REJECT ERA/TONE mismatches: when the story is historical/archival (a 1940s
+  figure, an old war, a period crime saga), REJECT modern UI screenshots
+  (banking apps, phone screens), present-day news chyrons/broadcast graphics,
+  and clearly contemporary people/settings standing in for period figures —
+  a modern bank-app screen inside 1940s archival texture breaks viewer trust.
+  Match the footage's apparent era to the spoken moment's era.
 - REJECT talking heads, logos, title/end cards, memes, reaction-face thumbnails,
   watermarked stock-preview grids, and unrelated scenes.
 - If a frame is clearly on-subject AND on-tone, pick the single strongest one.

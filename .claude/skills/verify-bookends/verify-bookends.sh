@@ -221,7 +221,13 @@ You are checking FIVE things:
       - is a SENTENCE FRAGMENT (no subject+verb that completes a thought);
       - is FLAT THROAT-CLEARING SETUP with no curiosity gap — a plain
         statement of circumstance that promises nothing ("i've got dms on
-        instagram", "so we were just hanging out", "i woke up that day").
+        instagram", "so we were just hanging out", "i woke up that day");
+      - is an ENCYCLOPEDIC/BIOGRAPHICAL OPENER — a "Name, title/apposition,
+        was/is/did..." Wikipedia-style setup sentence ("Joseph Stalin, the
+        communist ruler of the Soviet Union, had practically no personal
+        possessions."). The paradox/claim buried later should LEAD; if a
+        sharper hook line exists within budget, snap to it. An encyclopedic
+        open reads as a lecture, not a curiosity gap.
     Also enforce a HARD TIME-TO-FIRST-PAYOFF budget of ~${PAYOFF_BUDGET_DISP}s:
     report first_payoff_offset = seconds from the delivered open to where
     the TURN/PAYOFF lands (the curiosity gap opens, a concrete claim/number/

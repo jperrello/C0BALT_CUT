@@ -11,6 +11,9 @@ PAYOFF_BUDGET = float(os.environ.get("GRADE_PAYOFF_SEC", "3.0"))
 STATIC_BUDGET = float(os.environ.get("GRADE_STATIC_GAP_SEC", "5.0"))
 SILENCE_BUDGET = float(os.environ.get("GRADE_SILENCE_SEC", "0.8"))
 MIN_CAPTION_WORDS = int(os.environ.get("GRADE_MIN_CAPTION_WORDS", "3"))
+PAYOFF_FRAC = float(os.environ.get("GRADE_PAYOFF_FRAC", "0.4"))
+OPEN_SHOTS_MIN = int(os.environ.get("GRADE_OPEN_SHOTS_MIN", "2"))
+OPEN_SHOTS_SEC = float(os.environ.get("GRADE_OPEN_SHOTS_SEC", "5.0"))
 SILENCE_DB = os.environ.get("GRADE_SILENCE_DB", "-30dB")
 # frame1 face policy A/B (perf-style analysis 2026-07-07: opens_on_face ranked
 # rho=-0.94 against likes/1k — the swipe-gate "face at frame 1" heuristic may be
@@ -338,6 +341,10 @@ def grade(signals, hard, claude):
     if fc is None or fc > FIRST_CHANGE_BUDGET:
         g -= 5.0; notes.append("late_change-5")
 
+    s5 = signals.get("shots_first_5s")
+    if s5 is not None and s5 < OPEN_SHOTS_MIN:
+        g -= 6.0; notes.append("static_open-6")
+
     if FACE_OPEN == "broll" and signals.get("frame1_is_face") is True:
         g -= 8.0; notes.append("opens_on_face-8")
 
@@ -432,16 +439,21 @@ def gradeclip(clip, skipclaude, scene):
     dead, deadinfo = deadtail(clip, dur, td, maxsil)
 
     cadence = loadjson(sc["cadence"])
+    changes = scenechanges(clip, dur, scene) if dur > 0 else []
     if cadence and "max_gap" in cadence:
         gap = float(cadence["max_gap"])
     else:
-        gap = staticgap(scenechanges(clip, dur, scene), dur) if dur > 0 else None
+        gap = staticgap(changes, dur) if dur > 0 else None
 
     fc = firstvisualchange(sc)
     if fc is None and dur > 0:
-        ch = scenechanges(clip, dur, scene)
-        ch = [c for c in ch if c > 0.05]
+        ch = [c for c in changes if c > 0.05]
         fc = round(ch[0], 2) if ch else None
+
+    # distinct shots inside the opening window: the opening shot itself + every
+    # scene change before OPEN_SHOTS_SEC. The winner class shows 3 shots in 5s;
+    # a single-shot open (Stalin's 3.84s) reads static to a scroller.
+    shots5 = 1 + len([c for c in changes if 0.05 < c <= min(OPEN_SHOTS_SEC, dur)])
 
     signals = {
         "frame1_is_face": frame1face,
@@ -449,6 +461,7 @@ def gradeclip(clip, skipclaude, scene):
         "credit_lit_at_open": bool(credit),
         "first_visual_change_sec": fc,
         "first_payoff_offset": payoffoffset(sc),
+        "shots_first_5s": shots5,
         "longest_static_gap": gap,
         "opening_caption_words": openingcaptionwords(sc),
         "max_residual_silence": maxsil,
@@ -477,6 +490,13 @@ def gradeclip(clip, skipclaude, scene):
     # tier logic
     if not hard and g >= MIN_UPLOAD:
         tier = "GOLD"
+        # bait soft cap: a payoff landing past PAYOFF_FRAC of the runtime is a
+        # held-bait clip (MrBeast shipped GOLD with the payoff at 35.5s of 38s)
+        # — never DROSS, but not upload-ready as-is either.
+        po = signals.get("first_payoff_offset")
+        if po is not None and dur > 0 and po / dur > PAYOFF_FRAC:
+            tier = "FIXABLE"
+            signals["payoff_fraction"] = round(po / dur, 2)
     elif hard and all(CAP_ROUTE.get(c) and CAP_ROUTE.get(c) != "rerun_recommended" for c in hard):
         tier = "FIXABLE"
     else:
@@ -531,7 +551,8 @@ def main():
         g, _ = grade(doc["signals"], doc.get("hard_caps", []), sc_claude)
         doc["grade"] = g
         if not doc.get("hard_caps") and g >= MIN_UPLOAD:
-            doc["tier"] = "GOLD"
+            # respect the bait soft cap set by gradeclip's tier logic
+            doc["tier"] = "FIXABLE" if "payoff_fraction" in doc["signals"] else "GOLD"
 
     doc.pop("_deadtail", None)
     with open(a.out, "w") as f:
