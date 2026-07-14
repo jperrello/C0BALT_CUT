@@ -423,9 +423,17 @@ def gradeclip(clip, skipclaude, scene):
     else:
         frame1face = bool(framefab)
 
-    # face_withheld hard-cap: no face in frame0 OR fillplan shot0 kind != face
-    facewithheld = (framefab is False) or (shot0face is False)
-    if framefab is None and shot0face is None:
+    # face_withheld hard-cap: no face at frame 0. The DELIVERED PIXELS decide —
+    # the fillplan is only evidence when the detector had nothing to say. They
+    # disagree whenever a later stage (fix-cold-open's repunch, a b-roll
+    # truncate) puts the speaker back on frame 1 without rewriting the plan, and
+    # OR-ing them capped clips that visibly open on a face (contradicting the
+    # frame1_is_face signal this same function reports).
+    if framefab is not None:
+        facewithheld = (framefab is False)
+    elif shot0face is not None:
+        facewithheld = (shot0face is False)
+    else:
         facewithheld = False             # no evidence either way -> don't cap
     if shot0person and framefab is not True:
         facewithheld = False             # deliberate human cold open (no face) -> soft, not a hard cap
