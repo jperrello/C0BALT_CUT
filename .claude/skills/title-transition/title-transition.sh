@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # title-transition: animate the title in the TOP banner over the LIVE opening
 # footage (cold open — no blocking card), then let it clear by TITLE_SWAP so
-# brand-overlays can fade the source citation into the same top slot. five
-# styles, each a PIL frame sequence (styles.py) with its OWN matched SFX bed
-# (events.json -> sfx.py, mixed under the live audio; TITLE_SFX=0 disables) and
-# NO full-frame bg treatment (it shook/dimmed the live shot).
+# brand-overlays can fade the source citation into the same top slot. a PIL
+# frame sequence (styles.py) with a synced glitch SFX bed (sfx.py, folded into
+# the audio mix; TITLE_SFX=0 for silent) and NO full-frame bg treatment (it
+# shook/dimmed the live shot).
 set -euo pipefail
 
 input="${1:-}"
@@ -36,9 +36,7 @@ fi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 meta="$out.ttmeta"
-# TITLE_SFX=0 disables the style-matched animation SFX (default on).
-sfx_on="${TITLE_SFX:-1}"
-sig="$title|$style|$dur|top$anchor|sfx$sfx_on"
+sig="$title|$style|$dur|top$anchor|sfx${TITLE_SFX:-1}"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"
@@ -67,23 +65,20 @@ if [[ "${OVERLAY_PLAN_ONLY:-0}" != "0" ]]; then
   assets="${out}.assets"
   rm -rf "$assets"; mkdir -p "$assets"
   TITLE_ANCHOR_FRAC="$anchor" python3 "$here/styles.py" "$style" "$title" "$assets" "$w" "$h" "$dur" "$fps"
-  sfx_wav=""
-  if [[ "$sfx_on" != "0" && -f "$assets/events.json" ]]; then
-    if python3 "$here/sfx.py" "$assets/events.json" "$assets/sfx.wav" >&2; then
-      sfx_wav="$assets/sfx.wav"
-    else
-      echo "title-transition: sfx synth failed — continuing silent" >&2
-    fi
+  sfx=""
+  if [[ "${TITLE_SFX:-1}" != "0" ]] && python3 "$here/sfx.py" "$assets/sfx.wav" "$dur" "$fps" 2>/dev/null; then
+    sfx="$assets/sfx.wav"
   fi
-  python3 - "$out" "$assets/f_%04d.png" "$fps" "$sfx_wav" <<'PY'
-import json, sys
+  python3 - "$out" "$assets/f_%04d.png" "$fps" "$sfx" <<'PY'
+import json, os, sys
 out, seqpat, fps, sfx = sys.argv[1:5]
 spec = {
   "inputs": [{"path": seqpat, "framerate": float(fps)}],
   # full-frame top-banner PNG seq over the live footage; eof_action=pass so the
   # base keeps playing once the (short) title seq ends.
   "filter": "[{IN}][{L0}]overlay=0:0:eof_action=pass:format=auto[{OUT}]",
-  "audio": ({"mix": sfx, "apad": True} if sfx else None),
+  # the glitch SFX bed the compositor folds into the cluster audio mix.
+  "audio": {"mix": os.path.abspath(sfx), "apad": True} if sfx else None,
   "quality": "mid",
 }
 json.dump(spec, open(out, "w"), indent=2)
@@ -99,17 +94,9 @@ trap 'rm -rf "$tmp"' EXIT
 
 TITLE_ANCHOR_FRAC="$anchor" python3 "$here/styles.py" "$style" "$title" "$tmp" "$w" "$h" "$dur" "$fps"
 
-# style-matched animation SFX: styles.py writes events.json (the per-style cue
-# list — slam=riser+boom, glitch=zaps, typewriter=keys, bounce=pops, etc.);
-# sfx.py synthesizes it to a wav mixed UNDER the live audio so the title's
-# sound matches its animation. TITLE_SFX=0 skips it.
-sfx_wav=""
-if [[ "$sfx_on" != "0" && -f "$tmp/events.json" ]]; then
-  if python3 "$here/sfx.py" "$tmp/events.json" "$tmp/sfx.wav" >&2; then
-    sfx_wav="$tmp/sfx.wav"
-  else
-    echo "title-transition: sfx synth failed — continuing silent" >&2
-  fi
+sfx=""
+if [[ "${TITLE_SFX:-1}" != "0" ]] && python3 "$here/sfx.py" "$tmp/sfx.wav" "$dur" "$fps" 2>/dev/null; then
+  sfx="$tmp/sfx.wav"
 fi
 
 # title PNG sequence overlaid directly on the LIVE footage at the top banner —
@@ -126,13 +113,10 @@ while IFS= read -r -d '' a; do venc+=("$a"); done < <(vt_args mid)
 while IFS= read -r -d '' a; do vdec+=("$a"); done < <(vt_decode_args)
 while IFS= read -r -d '' a; do vthr+=("$a"); done < <(vt_threads)
 
-if [[ "$has_audio" == "audio" && -n "$sfx_wav" ]]; then
-  # mix the synthesized animation SFX under the live audio (SFX starts at the
-  # title animate-in, t=0); apad keeps amix from truncating to the short bed.
+if [[ "$has_audio" == "audio" && -n "$sfx" ]]; then
   ffmpeg -y -hide_banner -loglevel error \
-    ${vdec[@]+"${vdec[@]}"} -i "$input" -framerate "$fps" -i "$tmp/f_%04d.png" \
-    -i "$sfx_wav" \
-    -filter_complex "${ov};[2:a]apad[sfx];[0:a][sfx]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]" \
+    ${vdec[@]+"${vdec[@]}"} -i "$input" -framerate "$fps" -i "$tmp/f_%04d.png" -i "$sfx" \
+    -filter_complex "${ov};[2:a]apad[sfx];[0:a][sfx]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.97[a]" \
     -map "[v]" -map "[a]" \
     "${venc[@]}" \
     -c:a aac -b:a 192k "${vthr[@]}" -movflags +faststart "$staging"
