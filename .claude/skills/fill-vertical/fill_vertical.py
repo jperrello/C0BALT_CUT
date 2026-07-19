@@ -142,6 +142,13 @@ def pick(tracks, dom=None):
 
 def rep(tr):
     r = {k: float(np.median([f[k] for f in tr])) for k in ("cx", "cy", "w", "h", "eye")}
+    # positional travel across the shot (robust 10/90 percentiles) so the static
+    # crop can be SIZED + PLACED to keep the face in frame for the whole shot, not
+    # just the median frame — a subject drifting sideways used to hit the edge.
+    for k in ("cx", "eye"):
+        vals = [f[k] for f in tr]
+        r[k + "_lo"] = float(np.percentile(vals, 10))
+        r[k + "_hi"] = float(np.percentile(vals, 90))
     r["sig"] = trsig(tr)
     r["var"] = trackvar(tr)
     return r
@@ -162,9 +169,20 @@ def facebox(face, sw, sh, tw, th, face_frac, max_zoom):
     crop_h = max(crop_h, th / max_zoom)         # upscale cap
     crop_h = min(crop_h, sh, sw / ar)           # fit source bounds
     crop_w = crop_h * ar
-    eye_y = face["eye"] * sh
-    top = eye_y - crop_h / 3.0                   # eyeline on upper third
-    left = face["cx"] * sw - crop_w / 2.0
+    # motion-aware widening: if the face travels sideways during the shot, grow
+    # the crop so the whole travel + the face + a side margin stays inside (only
+    # kicks in on moving subjects — static shots keep the tight framing).
+    cx_lo = face.get("cx_lo", face["cx"])
+    cx_hi = face.get("cx_hi", face["cx"])
+    need_w = (cx_hi - cx_lo) * sw + max(face["w"] * sw, 1.0) * 1.15
+    if need_w > crop_w:
+        crop_w = min(need_w, sw, sh * ar)
+        crop_h = crop_w / ar
+    eye_lo = face.get("eye_lo", face["eye"])
+    eye_hi = face.get("eye_hi", face["eye"])
+    eye_y = (eye_lo + eye_hi) / 2.0 * sh
+    top = eye_y - crop_h * 0.38                   # eyeline high but with crown headroom
+    left = (cx_lo + cx_hi) / 2.0 * sw - crop_w / 2.0   # center on the travel midpoint
     top = max(0.0, min(top, sh - crop_h))
     left = max(0.0, min(left, sw - crop_w))
     return even(crop_w), even(crop_h), even(left), even(top)

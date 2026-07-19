@@ -13,6 +13,10 @@ SILENCE_BUDGET = float(os.environ.get("GRADE_SILENCE_SEC", "0.8"))
 MIN_CAPTION_WORDS = int(os.environ.get("GRADE_MIN_CAPTION_WORDS", "3"))
 PAYOFF_FRAC = float(os.environ.get("GRADE_PAYOFF_FRAC", "0.4"))
 OPEN_SHOTS_MIN = int(os.environ.get("GRADE_OPEN_SHOTS_MIN", "2"))
+# sparse b-roll reads as boring/static — the 2026-07-07 perf analysis put the
+# viral floor near 0.69 cutaway coverage. Penalize clearly-sparse clips so a
+# thin-cutaway short (~0.2 coverage) can't grade GOLD on hook alone.
+BROLL_COVER_FLOOR = float(os.environ.get("GRADE_BROLL_COVER_FLOOR", "0.4"))
 OPEN_SHOTS_SEC = float(os.environ.get("GRADE_OPEN_SHOTS_SEC", "5.0"))
 SILENCE_DB = os.environ.get("GRADE_SILENCE_DB", "-30dB")
 # frame1 face policy A/B (perf-style analysis 2026-07-07: opens_on_face ranked
@@ -348,6 +352,11 @@ def grade(signals, hard, claude):
     if FACE_OPEN == "broll" and signals.get("frame1_is_face") is True:
         g -= 8.0; notes.append("opens_on_face-8")
 
+    cov = signals.get("cutaway_coverage")
+    if cov is not None and cov < BROLL_COVER_FLOOR:
+        pen = min(12.0, (BROLL_COVER_FLOOR - cov) * 30.0)
+        g -= pen; notes.append("sparse_broll-%.0f" % pen)
+
     if claude:
         # rubric 0-10 each; pull the grade toward the mean of the three terms
         vals = [claude.get(k) for k in ("hook_payoff", "open_loop", "cold_context")]
@@ -474,6 +483,7 @@ def gradeclip(clip, skipclaude, scene):
         "opening_caption_words": openingcaptionwords(sc),
         "max_residual_silence": maxsil,
         "terminal_loop_score": loop,
+        "cutaway_coverage": (loadjson(sc["broll"]) or {}).get("cutaway_coverage"),
     }
 
     hard = []
