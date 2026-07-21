@@ -47,11 +47,14 @@ the source citation into the same top slot (see that skill).
 The channel default is a SINGLE animation — `glitch` (RGB-split banner +
 scanline tear) — in the brand language: Sapphire Glow `#2E6BFF` accent word,
 black-stroked type, Platinum white (`brand/BRAND.md`). It carries a synced
-glitch SFX bed: `sfx.py` synthesizes (stdlib `wave` only, no assets) an intro
-data-corruption zap as the banner materializes, a scanline-tear stutter at the
-mid burst, and a reverse-zap dissolve on the outro — timed to `styles.py`'s
-glitch keyframes (no `events.json`; driven by `dur`) and mixed UNDER the live
-audio so the title's sound matches its animation. `TITLE_SFX=0` disables it.
+glitch SFX bed: `sfx.py` synthesizes (stdlib `wave` only, no assets) the
+channel's original glitch sound — stereo-panned digital `zap` bursts
+(sample-and-hold noise) + `crackle`, on the fixed event schedule (three intro
+zaps + an intro crackle, a mid-burst zap, an outro zap + crackle) timed to
+`styles.py`'s glitch keyframes (no `events.json`; driven by `dur`) and mixed
+UNDER the live audio. It is bit-identical to the pre-retirement synth (same
+`Random(7)` draw order). `TITLE_SFX=0` disables it; `TITLE_SFX_GAIN` (default
+1.0 = original level) tunes presence.
 This is the animation's own sound, not a card stinger — and there is NO
 full-frame bg treatment (the old flash/shake/dim shook the live shot).
 

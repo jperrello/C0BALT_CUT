@@ -36,7 +36,7 @@ fi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 meta="$out.ttmeta"
-sig="$title|$style|$dur|top$anchor|sfx${TITLE_SFX:-1}"
+sig="$title|$style|$dur|top$anchor|sfx${TITLE_SFX:-1}|zc|g${TITLE_SFX_GAIN:-1.0}"
 
 if [[ -f "$out" && -f "$meta" ]]; then
   o="$(stat -f %m "$out" 2>/dev/null || stat -c %Y "$out")"

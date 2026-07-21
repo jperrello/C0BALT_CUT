@@ -1,107 +1,85 @@
 #!/usr/bin/env python3
-# synthesize the glitch title SFX bed. stdlib `wave` only — no assets. synced to
-# styles.py's glitch timing: an intro data-corruption zap as the banner
-# materializes (0..intro), a short scanline-tear stutter at the mid burst
-# (mid0..mid1), and a reverse-zap dissolve on the outro (dur-outt..dur).
+# synthesize the glitch title SFX bed — the ORIGINAL channel glitch sound:
+# panned digital `zap` bursts (sample-and-hold noise) + `crackle`, on the exact
+# event schedule the old events.json glitch style emitted. stdlib `wave` only.
 # usage: sfx.py <out.wav> <dur> [fps]
-import math, random, struct, sys, wave
+import math, os, random, struct, sys, wave
 
 out = sys.argv[1]
 dur = float(sys.argv[2])
 SR = 48000
 
-# keep these in lockstep with styles.py::glitch()
+# lockstep with styles.py::glitch()
 INTRO, OUTT = 0.38, 0.28
-MID0, MID1 = 1.22, 1.36
+MID0 = 1.22
 
-total = dur + 0.15
+total = dur + 0.3
 n = int(total * SR)
-buf = [0.0] * n
-rng = random.Random(99)  # same seed family as the visual for a matched feel
+L = [0.0] * n
+R = [0.0] * n
+rng = random.Random(7)   # original seed — reproduces the exact texture
 
 
-def add(t0, samp, gain=1.0):
+def add(t0, samp, pl=1.0, pr=1.0):
     off = int(t0 * SR)
     for i, s in enumerate(samp):
         j = off + i
         if 0 <= j < n:
-            buf[j] += s * gain
+            L[j] += s * pl
+            R[j] += s * pr
 
 
-def norm(s, peak):
-    pk = max((abs(x) for x in s), default=1.0) or 1.0
-    return [x / pk * peak for x in s]
+def norm(buf, peak):
+    pk = max((abs(x) for x in buf), default=1.0) or 1.0
+    return [x / pk * peak for x in buf]
 
 
-def sweep(f0, f1, d, shape=1.0):
+def zap(t, d=0.09):
+    f = rng.uniform(300, 1800)
+    hold = max(1, int(SR / f))
     m = int(d * SR)
-    ph, o = 0.0, []
-    for i in range(m):
-        f = f0 + (f1 - f0) * ((i / m) ** shape)
-        ph += 2 * math.pi * f / SR
-        o.append(1.0 if math.sin(ph) >= 0 else -1.0)  # square = harsh/digital
-    return o
-
-
-# sample-and-hold noise (a bit-crushed data-corruption texture)
-def crush(d, rate, cut=0.0):
-    m = int(d * SR)
-    hold = max(1, int(SR / rate))
-    o, cur = [], 0.0
+    s, v = [], 0.0
     for i in range(m):
         if i % hold == 0:
-            cur = rng.uniform(-1, 1)
-            if cut and rng.random() < cut:
-                cur = 0.0
-        o.append(cur)
-    return o
+            v = rng.uniform(-1, 1)
+        s.append(v * (1 - i / m) ** 1.4)
+    pan = rng.uniform(0.3, 0.7)
+    add(t, norm(s, 0.27), 1 - pan, pan)
 
 
-# hard on/off gate — the audio analogue of the scanline tear
-def stutter(sig, chunks):
-    m = len(sig)
-    seg = max(1, m // chunks)
-    o = list(sig)
-    for c in range(chunks):
-        if rng.random() < 0.4:
-            for i in range(c * seg, min(m, (c + 1) * seg)):
-                o[i] = 0.0
-    return o
+def crackle(t, d=0.3):
+    m = int(d * SR)
+    s = [0.0] * m
+    for _ in range(int(d * 70)):
+        j = rng.randrange(m)
+        for k in range(int(0.002 * SR)):
+            if j + k < m:
+                s[j + k] += rng.uniform(-1, 1) * (1 - k / (0.002 * SR))
+    add(t, norm(s, 0.10))
 
 
-def zap(d, f0, f1, peak):
-    body = sweep(f0, f1, d, 1.4)
-    grit = crush(d, 5200, cut=0.25)
-    m = len(body)
-    s = [(body[i] * 0.7 + grit[i] * 0.5) * math.exp(-(i / m) * 3.2) for i in range(m)]
-    return norm(s, peak)
+# the original glitch event schedule — order matters (a shared Random(7) draws
+# through the events in this exact sequence, so the texture is reproduced).
+zap(0.02)
+zap(0.13)
+zap(0.25)
+crackle(0.0, INTRO)
+zap(MID0)
+zap(dur - OUTT)
+crackle(dur - OUTT, OUTT)
 
-
-# --- intro: banner slams in with a digital zap + corruption stutter ---
-z = zap(INTRO, 1400, 180, 0.5)
-add(0.0, stutter(z, 9))
-tear = norm(stutter(crush(INTRO * 0.7, 3400, cut=0.3), 12), 0.28)
-add(0.02, tear)
-
-# --- mid burst: brief scanline-tear stutter ---
-mb = norm(stutter(crush(MID1 - MID0, 4200, cut=0.35), 7), 0.3)
-add(MID0, mb)
-add(MID0, norm(sweep(900, 500, MID1 - MID0), 0.14))
-
-# --- outro: reverse zap dissolves the banner ---
-o = zap(OUTT, 220, 1300, 0.34)
-o = o[::-1]  # reverse so it swells then cuts (dissolve feel)
-add(dur - OUTT, stutter(o, 6))
-
-# soft limiter + 16-bit PCM
-pk = max((abs(x) for x in buf), default=1.0) or 1.0
-if pk > 0.97:
-    buf = [x / pk * 0.97 for x in buf]
-
+# master gain (TITLE_SFX_GAIN tunes presence; 1.0 = the original level) + the
+# original 0.9 ceiling, 16-bit stereo PCM.
+gain = float(os.environ.get("TITLE_SFX_GAIN", "1.0")) * 0.9
 w = wave.open(out, "w")
-w.setnchannels(1)
+w.setnchannels(2)
 w.setsampwidth(2)
 w.setframerate(SR)
-w.writeframes(b"".join(struct.pack("<h", int(max(-1, min(1, x)) * 32767)) for x in buf))
+frames = bytearray()
+for i in range(n):
+    a = max(-1.0, min(1.0, L[i] * gain))
+    b = max(-1.0, min(1.0, R[i] * gain))
+    frames += struct.pack("<hh", int(a * 32767), int(b * 32767))
+w.writeframes(bytes(frames))
 w.close()
-print(f"sfx: glitch bed {total:.2f}s -> {out}", file=sys.stderr)
+print(f"sfx: glitch (original zap/crackle) {total:.2f}s -> {out}", file=sys.stderr)
